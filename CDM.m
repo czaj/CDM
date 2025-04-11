@@ -55,7 +55,7 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %    Results.POISS = POISS(INPUT,Results,EstimOpt,OptimOpt);
 
 
-
+%TC_par_index - which parameter to use for CS calculation, default = 2
 %clear
 %clc
 global B_backup;
@@ -77,13 +77,22 @@ end
 format shortG;
 format compact;
 
-if isfield(EstimOpt, 'NB') == 0 
+if isfield(EstimOpt, 'NB') == 0 || EstimOpt.NB ==0
     EstimOpt.NB = 0;
+    EstimOpt.NVarNB = 0;
 end
 
-if isfield(EstimOpt, 'Zinf') == 0 
+if isfield(EstimOpt, 'Zinf') == 0 || EstimOpt.Zinf ==0
     EstimOpt.Zinf = 0;
+    EstimOpt.NVarZinf = 0;
 end
+
+if isfield(EstimOpt, 'TC_par_index') == 0 || EstimOpt.TC_par_index ==0
+    EstimOpt.TC_par_index = 2;
+end
+
+TC_par_index = EstimOpt.TC_par_index;
+
 
 % if EstimOpt.Zinf==1
 %     INPUT.Xzinf = INPUT.Xzinf;
@@ -132,7 +141,7 @@ if EstimOpt.Display == 1
         disp('Estimating Negative Binomial regression model ...')
     end
     if  EstimOpt.Zinf == 1
-        disp('Zero inflated')
+        disp('Zero-inflated')
     end
     if isfield(EstimOpt,'Truncated') == 0 || EstimOpt.Truncated ==0
         disp('without truncation')
@@ -171,7 +180,7 @@ if isfield(EstimOpt,'NamesA') == 0 || isempty(EstimOpt.NamesA) || length(EstimOp
 elseif size(EstimOpt.NamesA,1) ~= EstimOpt.NVarA
     EstimOpt.NamesA = EstimOpt.NamesA';
 end
-%!!!!!!!!!
+%if add NB>1
 if EstimOpt.NVarNB > 1 
     % if isfield(EstimOpt,'NamesNB') == 0 || isempty(EstimOpt.NamesNB)|| length(EstimOpt.NamesNB) ~= (EstimOpt.NVarNB-1)
     %     EstimOpt.NamesNB = (1:EstimOpt.NVarNB-1)';
@@ -198,7 +207,6 @@ end
 
 %% starting values 
 
-%if exist('B_backup','var') && ~isempty(B_backup) && size(B_backup,1) == EstimOpt.NVarA + EstimOpt.NVarNB
 if exist('B_backup','var') && ~isempty(B_backup) && size(B_backup,1) == EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
     b0 = B_backup(:);
     if EstimOpt.Display == 1
@@ -208,7 +216,6 @@ elseif isfield(Results_old,'POISS') && isfield(Results_old.POISS,'b0') % startin
 
     Results_old.POISS.b0_old = Results_old.POISS.b0;
     Results_old.POISS = rmfield(Results_old.POISS,'b0');
-    %if length(Results_old.POISS.b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB
     if length(Results_old.POISS.b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
        if EstimOpt.Display == 1
             disp('WARNING: Incorrect no. of starting values or model specification')
@@ -428,6 +435,7 @@ end
 
 if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
     Results.stats = [Results.LL; Results_old.POISS0.LL;  1-Results.LL/Results_old.POISS0.LL; NaN; ((2*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs; ((log(EstimOpt.NObs)*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs ;EstimOpt.NObs; EstimOpt.NP; EstimOpt.Params];
+
 else
     Results.stats = NaN(9,1);
 end
@@ -452,23 +460,158 @@ if EstimOpt.Zinf == 1
     Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf))] ;
 end
 
-if EstimOpt.Display == 1
-    disp(' ');
-    disp('Lambda parameters');
-    disp(['var.', blanks(size(char(EstimOpt.NamesA),2)-2) ,'coef.      st.err.  p-value'])
-    disp([char(EstimOpt.NamesA) ,blanks(EstimOpt.NVarA)', num2str(Results.DetailsA(:,1),'%8.4f') star_sig(Results.DetailsA(:,4)) num2str(Results.DetailsA(:,3:4),'%8.4f %8.4f')])
 
-    if EstimOpt.NB  > 0 
-        disp(' ');
-        disp('Overdispersion parameters');
-        disp(['var.', blanks(size(char(EstimOpt.NamesNB),2)-2) ,'coef.      st.err.  p-value'])
-        disp([char(EstimOpt.NamesNB) ,blanks(EstimOpt.NVarNB + (EstimOpt.NB == 2))', num2str(Results.DetailsNB(:,1),'%8.4f') star_sig(Results.DetailsNB(:,4)) num2str(Results.DetailsNB(:,3:4),'%8.4f %8.4f')])
-    end
 
-    if EstimOpt.Zinf  == 1 
-        disp(' ');
-        disp('Zero inflation ');
-        disp(['var.', blanks(size(char(EstimOpt.NamesZinf),2)-2) ,'coef.      st.err.  p-value'])
-        disp([char(EstimOpt.NamesZinf) ,blanks(EstimOpt.NVarZinf)', num2str(Results.DetailsZinf(:,1),'%8.4f') star_sig(Results.DetailsZinf(:,4)) num2str(Results.DetailsZinf(:,3:4),'%8.4f %8.4f')])
+
+%% Template filling
+
+
+Template1 = {'DetailsA'};
+Template2 = {'DetailsA'};
+Names.DetailsA = EstimOpt.NamesA;
+Heads.DetailsA = {'';'tb'};
+ST = {'DetailsA'};
+
+if EstimOpt.NVarNB > 0
+    Template1 = [Template1;{'DetailsNB'}];
+    Template2 = [Template2;{'DetailsNB'}];
+    Names.DetailsNB = EstimOpt.NamesNB;
+    Heads.DetailsNB(:,2) = Heads.DetailsA(1:end-1);
+    Heads.DetailsNB(end+1,2) = {'tb'};
+    Heads.DetailsNB(1:2,1) = {'Overdispersion parameters';'lb'};
+    ST = [ST,{'DetailsNB'}];
+end
+
+if EstimOpt.NVarZinf > 0
+    Template1 = [Template1;{'DetailsZinf'}];
+    Template2 = [Template2;{'DetailsZinf'}];
+    Names.DetailsZinf = EstimOpt.NamesZinf;
+    Heads.DetailsZinf(:,2) = Heads.DetailsA(1:end-1);
+    Heads.DetailsZinf(end+1,2) = {'tb'};
+    Heads.DetailsZinf(1:2,1) = {'Zero inflation';'lb'};
+    ST = [ST,{'DetailsZinf'}];
+end
+
+
+
+%% Header
+
+Head = cell(1,2);
+
+if EstimOpt.NB == 0
+    if EstimOpt.Zinf == 1
+        Head(1,1) = {'Zero-inflated Poisson'};
+    else
+        Head(1,1) = {'Poisson'};
     end
+else
+    if EstimOpt.Zinf == 1
+        Head(1,1) = {'Zero-inflated Negative Binomial'};
+    else
+        Head(1,1) = {'Negative Binomial'};
+    end
+end
+if isfield(EstimOpt,'Censored') == 0 || EstimOpt.Censored < 1
+    if EstimOpt.Truncated == 1
+        Head(1,2) = {'with zero-truncation'};
+    elseif EstimOpt.Truncated == 2
+        Head(1,2) = {'with zero-truncation and endogenous stratification'};
+    else
+        Head(1,2) = {''};
+    end
+else 
+    if EstimOpt.Truncated == 1
+        Head(1,2) = {num2str(EstimOpt.Censored, 'with zero-truncation, censored at %2.0f')};
+    elseif EstimOpt.Truncated == 2
+        Head(1,2) = {num2str(EstimOpt.Censored,'with zero-truncation and endogenous stratification, censored at %2.0f')};
+    else
+        Head(1,2) = {num2str(EstimOpt.Censored,'censored at %2.0f')};
+    end
+end
+
+
+%% Footer
+
+Tail = cell(19,2);
+Tail(2,1) = {'Model diagnostics'};
+Tail(3:15,1) = {'LL at convergence';'LL at constant(s) only';strcat('McFadden''s pseudo-R',char(178));'AIC/n';'BIC/n';'n (observations)';'r (respondents)';'k (parameters)';' ';'Estimation method';'Optimization method';'Gradient';'Hessian'};
+
+if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+    Tail(3:10,2) = num2cell(Results.stats([1:3,5:9]));
+end
+
+
+if any(INPUT.W ~= 1)
+    Tail(12,2) = {'weighted maximum likelihood'};
+else
+    Tail(12,2) = {'maximum likelihood'};
+end
+
+Tail(13,2) = {OptimOpt.Algorithm;};
+
+if strcmp(OptimOpt.GradObj,'on')
+    if EstimOpt.NumGrad == 0
+        Tail(14,2) = {'user-supplied, analytical'};
+    else
+        Tail(14,2) = {['user-supplied, numerical ',num2str(OptimOpt.FinDiffType)]};
+    end
+else
+    Tail(14,2) = {['built-in, ',num2str(OptimOpt.FinDiffType)]};
+end
+
+if isequal(OptimOpt.Algorithm,'quasi-newton')
+    outHessian='off, ';
+    switch EstimOpt.HessEstFix
+        case 0
+            outHessian = [outHessian,'retained from optimization'];
+        case 1
+            outHessian = [outHessian,'ex-post calculated using BHHH'];
+        case 2
+            outHessian = [outHessian,'ex-post calculated using high-precision BHHH'];
+        case 3
+            outHessian = [outHessian,'ex-post calculated numerically'];
+        case 4
+            outHessian = [outHessian,'ex-post calculated analytically'];
+    end
+else
+    if strcmp(OptimOpt.Hessian,'user-supplied')
+        if EstimOpt.ApproxHess == 1
+            outHessian = 'user-supplied, BHHH, ';
+        else
+            outHessian = 'user-supplied, analytical, ';
+        end
+    else
+        outHessian = ['built-in, ',num2str(OptimOpt.HessUpdate),', '];
+    end
+    switch EstimOpt.HessEstFix
+        case 0
+            outHessian = [outHessian,'retained from optimization'];
+        case 1
+            outHessian = [outHessian,'ex-post calculated using BHHH'];
+        case 2
+            outHessian = [outHessian,'ex-post calculated using high-precision BHHH'];
+        case 3
+            outHessian = [outHessian,'ex-post calculated numerically'];
+        case 4
+            outHessian = [outHessian,'ex-post calculated analytically'];
+    end
+end
+
+Tail(15,2) = {outHessian};
+
+Tail(17,1) = {'CS'};
+Tail(17,2) = {'st.err.'};
+
+if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+    Tail(18,1) = {num2str(-1/Results.DetailsA(TC_par_index,1),'%8.4f')};
+    Tail(18,2) = {num2str(sqrt(Results.ihess(2,2)*((-1./Results.DetailsA(2,1))^4)),'%8.4f %8.4f')};
+end
+
+
+%%  Print to screen and .xls
+
+if EstimOpt.Display ~= 0
+    Results.Dist = -ones(EstimOpt.NVarA,1);
+    Results.R_out = genOutput(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
+end
 end
