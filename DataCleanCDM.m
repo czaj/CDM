@@ -53,10 +53,10 @@ if isfield(INPUT,'W') && ~isempty(INPUT.W)
     else
         INPUT.W = INPUT.W(:);
         INPUT.W = INPUT.W(1:EstimOpt.NCT:end);
-%         if sum(INPUT.W) ~= EstimOpt.NP
-%             cprintf(rgb('DarkOrange'), ['WARNING: Scaling weights for unit mean. \n'])
-%             INPUT.W = INPUT.W - mean(INPUT.W) + 1;
-%         end
+        if sum(INPUT.W) ~= EstimOpt.NP
+            cprintf(rgb('DarkOrange'), ['WARNING: Scaling weights for unit mean. \n'])
+            INPUT.W = INPUT.W - mean(INPUT.W) + 1;
+        end
     end
 else
     INPUT.W = ones(EstimOpt.NP,1);
