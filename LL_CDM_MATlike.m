@@ -29,6 +29,6 @@ if isequal(OptimOpt.GradObj,'on')
     
 else % No gradient
     EstimOpt.NumGrad = 1;
-    f = LLfun(b0);   
+    f = LLfun(b0).*W;
 end
 LL = sum(f);
