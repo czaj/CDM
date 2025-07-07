@@ -492,15 +492,15 @@ if EstimOpt.NVarZinf > 0
     ST = [ST,{'DetailsZinf'}];
 end
 
-% if EstimOpt.Print_Distribution>0
-%     Template1 = [Template1;{'DetailsDistr'}];
-%     Template2 = [Template2;{'DetailsDistr'}];
-%     Names.DetailsZinf = [{'Explained Var'}; EstimOpt.NamesA(TC_par_index)];
-%     Heads.DetailsZinf(:,2) = Heads.DetailsA(1:end-1);
-%     Heads.DetailsZinf(end+1,2) = {'tb'};
-%     Heads.DetailsZinf(1:2,1) = {'Zero inflation';'lb'};
-%     ST = [ST,{'DetailsDistr'}];
-% end
+if EstimOpt.Print_Distribution>0
+    Template1 = [Template1;{'DetailsDistr'}];
+    Template2 = [Template2;{'DetailsDistr'}];
+    Names.DetailsZinf = [{'Explained Var'}; EstimOpt.NamesA(TC_par_index)];
+    Heads.DetailsZinf(:,2) = Heads.DetailsA(1:end-1);
+    Heads.DetailsZinf(end+1,2) = {'tb'};
+    Heads.DetailsZinf(1:2,1) = {'Zero inflation';'lb'};
+    ST = [ST,{'DetailsDistr'}];
+end
 
 %% Header
 
