@@ -190,7 +190,7 @@ if EstimOpt.NVarNB > 1
     % end
     % EstimOpt.NamesNB = [{'Cons'};EstimOpt.NamesNB];
 else
-    EstimOpt.NamesNB = {'Cons'};
+    EstimOpt.NamesNB = {'ln alpha'};
 end
 
 if EstimOpt.NVarZinf > 1 
@@ -350,7 +350,7 @@ LLfun = @(B) LL_CDM_MATlike(INPUT.Y, INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,INPUT.W, Est
 if EstimOpt.ConstVarActive == 0 
     
     if EstimOpt.HessEstFix == 0 %optimization hessian used
-        [Results.bhat, LL, Results.exitf, Results.output, Results.g, Results.hess] = fminunc(LLfun, b0, OptimOpt);
+        [Results.bhat, LL, Results.exitf, Results.output, Results.g, Results.hess] = fminunc(LLfun, b0, OptimOpt); %tu się dzieje coś dziwnego z b0, dlaczego w kolejnych iteracjach std. err maleje?
     else
         [Results.bhat, LL, Results.exitf, Results.output, Results.g] = fminunc(LLfun, b0, OptimOpt);
     end  
@@ -375,12 +375,12 @@ Results.LL = -LL;
 Results.b0_old = b0;
 
 if EstimOpt.HessEstFix == 1
-	f = LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
-    Results.jacobian = numdiff(@(B) LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf, EstimOpt,B),f,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
+	f = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
+    Results.jacobian = numdiff(@(B) LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf, EstimOpt,B),f,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
 elseif EstimOpt.HessEstFix == 2
-    Results.jacobian = jacobianest(@(B) LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.bhat);
+    Results.jacobian = jacobianest(@(B) LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.bhat);
 elseif EstimOpt.HessEstFix == 3
-    Results.hess = hessian(@(B) sum(LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),1), Results.bhat);
+    Results.hess = hessian(@(B) sum(LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),1), Results.bhat);
 end
 
 
@@ -405,11 +405,11 @@ end
 
 if EstimOpt.RobustStd == 1
     if EstimOpt.NumGrad == 0
-        [~, Results.jacobian] = LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
+        [~, Results.jacobian] = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
         Results.jacobian = Results.jacobian.*INPUT.W(:, ones(1,size(Results.jacobian,2)));
     else
-        Results.LLdetailed = LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
-        Results.jacobian = numdiff(@(B) INPUT.W.*LL_DCE(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.LLdetailed,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
+        Results.LLdetailed = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
+        Results.jacobian = numdiff(@(B) INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.LLdetailed,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
     end
     RobJacob = zeros(EstimOpt.NP, size(Results.jacobian,2));
     RobJacob(1,:) = sum(Results.jacobian(1:EstimOpt.NCTMiss(1),:),1);
@@ -460,7 +460,10 @@ if EstimOpt.Zinf == 1
     Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf))] ;
 end
 
-
+if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+    Results.DetailsCS = zeros(1,4);
+    Results.DetailsCS(:,[1 3 4]) = [-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)), pv(-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)))];
+end
 
 
 %% Template filling
@@ -476,9 +479,8 @@ if EstimOpt.NVarNB > 0
     Template1 = [Template1;{'DetailsNB'}];
     Template2 = [Template2;{'DetailsNB'}];
     Names.DetailsNB = EstimOpt.NamesNB;
-    Heads.DetailsNB(:,2) = Heads.DetailsA(1:end-1);
-    Heads.DetailsNB(end+1,2) = {'tb'};
-    Heads.DetailsNB(1:2,1) = {'Overdispersion parameters';'lb'};
+    Heads.DetailsNB(1,1:2) = {'','Overdispersion parameters'};
+    Heads.DetailsNB(end+1,1:2) = {'tb','tb'};
     ST = [ST,{'DetailsNB'}];
 end
 
@@ -486,13 +488,19 @@ if EstimOpt.NVarZinf > 0
     Template1 = [Template1;{'DetailsZinf'}];
     Template2 = [Template2;{'DetailsZinf'}];
     Names.DetailsZinf = EstimOpt.NamesZinf;
-    Heads.DetailsZinf(:,2) = Heads.DetailsA(1:end-1);
-    Heads.DetailsZinf(end+1,2) = {'tb'};
-    Heads.DetailsZinf(1:2,1) = {'Zero inflation';'lb'};
+    Heads.DetailsZinf(1,1:2) = {'','Zero inflation'};
+    Heads.DetailsZinf(end+1,1:2) = {'tb','tb'};
     ST = [ST,{'DetailsZinf'}];
 end
 
-
+if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+    Template1 = [Template1;{'DetailsCS'}];
+    Template2 = [Template2;{'DetailsCS'}];
+    Names.DetailsCS = cellstr(strcat('-1/(', EstimOpt.NamesA(TC_par_index),')'));
+    Heads.DetailsCS(1,1:2) = {'','Consumer Surplus'};
+    Heads.DetailsCS(end+1,1:2) = {'tb','tb'};
+    ST = [ST,{'DetailsCS'}];
+end
 
 %% Header
 
@@ -532,7 +540,7 @@ end
 
 %% Footer
 
-Tail = cell(19,2);
+Tail = cell(26,4);
 Tail(2,1) = {'Model diagnostics'};
 Tail(3:15,1) = {'LL at convergence';'LL at constant(s) only';strcat('McFadden''s pseudo-R',char(178));'AIC/n';'BIC/n';'n (observations)';'r (respondents)';'k (parameters)';' ';'Estimation method';'Optimization method';'Gradient';'Hessian'};
 
@@ -599,19 +607,21 @@ end
 
 Tail(15,2) = {outHessian};
 
-Tail(17,1) = {'CS'};
-Tail(17,2) = {'st.err.'};
+Tail(17,1) = {'Descriptive Statistics'};
 
 if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
-    Tail(18,1) = {num2str(-1/Results.DetailsA(TC_par_index,1),'%8.4f')};
-    Tail(18,2) = {num2str(sqrt(Results.ihess(2,2)*((-1./Results.DetailsA(2,1))^4)),'%8.4f %8.4f')};
+    Tail(18,1:3) = {'var','Y',char(EstimOpt.NamesA(TC_par_index))};
+    desc_y = dstats(INPUT.Y);
+    desc_tc = dstats(INPUT.Xa(:,TC_par_index));
+    desc = [desc_y(1:7,:),desc_tc(1:7,2)];
+    Tail(20:26,1:3) = desc;
 end
-
 
 %%  Print to screen and .xls
 
 if EstimOpt.Display ~= 0
     Results.Dist = -ones(EstimOpt.NVarA,1);
-    Results.R_out = genOutput(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
+    Results.R_out = genOutput_CDM(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
+
 end
 end
