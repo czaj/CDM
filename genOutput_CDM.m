@@ -357,7 +357,6 @@ end
     fprintf('%-29s%*.*f\n', 'LL at convergence:',CWm(1)+spacing+precision+1,precision, Results.stats(1))
     fprintf('%-29s%*.*f\n', 'LL at constant(s) only:',CWm(1)+spacing+precision+1,precision, Results.stats(2))
     fprintf('%-29s%*.*f\n', strcat('McFadden''s pseudo-R',char(178),':'),CWm(1)+spacing+precision+1,precision, Results.stats(3))
-    fprintf('%-29s%*.*f\n', strcat('Ben-Akiva-Lerman''s pseudo-R',char(178),':'),CWm(1)+spacing+precision+1,precision, Results.stats(4))
     fprintf('%-29s%*.*f\n','AIC/n:',CWm(1)+spacing+precision+1,precision, Results.stats(5))
     fprintf('%-29s%*.*f\n','BIC/n:',CWm(1)+spacing+precision+1,precision, Results.stats(6))
     fprintf('%-29s%*.*f\n','n (observations):',CWm(1)+spacing,0, Results.stats(7))
@@ -375,15 +374,16 @@ end
         padding_TC_par = 0;
     else
         TC_par_name = char(EstimOpt.NamesA(EstimOpt.TC_par_index));
-        padding_TC_par = floor((20 - strlength(TC_par_name)) / 2)-1;
+        padding_TC_par = floor((20 - strlength(TC_par_name)) / 2)+1;
     end
-    fprintf('%-*s%-*s', 17,'var')
-    fprintf('%s%-*s%s%-*s%s', repmat(' ', 1, 4),7,'Y',repmat(' ', 1, padding_TC_par),20, TC_par_name,'   ')
+
+    fprintf('%-*s', 18,'var')
+    fprintf('%*s%*s%s',20,['Y',repmat(' ', 1, 10)],22, [TC_par_name,repmat(' ', 1, padding_TC_par)],'   ')
     fprintf('\n')
 
     for i= 19:size(Tail,1)
-        fprintf('%-*s%-*s', 17,Tail{i,1})
-        fprintf('%-*.*f%-*.*f%s ', 16,precision,Tail{i,2}, 20,precision, Tail{i,3},'   ')
+        fprintf('%-*s%-*s', 18,Tail{i,1})
+        fprintf('%*.*f%*.*f%s ', 14,precision,Tail{i,2}, 21,precision, Tail{i,3},'     ')
         fprintf('\n')
     end
     
