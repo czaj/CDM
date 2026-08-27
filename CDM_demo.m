@@ -1,0 +1,187 @@
+% CDM_demo - a walkthrough of the count data models in this package.
+%
+% Everything runs on simulated data with known parameters, so you can compare
+% the estimates against the values used to generate the data. Run it section by
+% section (ctrl+enter) rather than all at once.
+%
+% Requires the Tools repository (https://github.com/czaj/Tools) on the path.
+%
+% Author: Mikolaj Czajkowski, Professor
+% University of Warsaw, Faculty of Economic Sciences
+% email address: mik@czaj.org
+% Website: http://czaj.org/#
+
+clear
+clc
+global B_backup
+
+rng(10000001)
+
+
+%% Simulated recreation demand data
+% Xa holds a constant, travel cost and income. The travel cost coefficient is
+% negative, so consumer surplus per trip (-1/beta_tc) is positive.
+
+n = 5000; % number of respondents
+
+INPUT.Xa = [ones(n,1),unifrnd(5,50,n,1),unifrnd(-1,1,n,1)]; % Cons, travel cost, income
+beta = [1.8;-0.05;0.3];
+Lam = exp(INPUT.Xa*beta); % expected number of trips
+
+INPUT.MissingInd = zeros(n,1);
+
+EstimOpt.NP = n;  % number of respondents
+EstimOpt.NCT = 1; % observations per respondent
+EstimOpt.NamesA = {'Cons';'Travel cost';'Income'};
+EstimOpt.TC_par_index = 2; % travel cost is the 2nd parameter of Xa
+EstimOpt.ProjectName = 'demo';
+
+fprintf('True beta: %s, implied CS per trip: %.2f\n',mat2str(beta',3),-1/beta(2))
+
+
+%% Poisson
+
+B_backup = [];
+INPUT.Y = poissrnd(Lam);
+EstimOpt.NB = 0;
+EstimOpt.Zinf = 0;
+EstimOpt.Truncated = 0;
+EstimOpt.Censored = 0;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.POISS = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+
+%% Negative Binomial
+% theta = exp(-gamma), so a true theta of 2 means gamma = -log(2) = -0.693.
+
+B_backup = [];
+theta = 2;
+INPUT.Y = nbinrnd(theta,theta./(theta+Lam));
+EstimOpt.NB = 1;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+
+%% Negative Binomial with covariates of overdispersion
+% Overdispersion is allowed to depend on income. A constant is prepended to Xnb
+% automatically, so NamesNB only lists the covariates.
+
+B_backup = [];
+theta_i = exp(-(0.2 + 0.5*INPUT.Xa(:,3)));
+INPUT.Y = nbinrnd(theta_i,theta_i./(theta_i+Lam));
+INPUT.Xnb = INPUT.Xa(:,3);
+EstimOpt.NB = 1;
+EstimOpt.NamesNB = {'Income'};
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.NB_Xnb = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+INPUT = rmfield(INPUT,'Xnb');
+EstimOpt = rmfield(EstimOpt,'NamesNB');
+
+
+%% Zero-truncated Poisson (on-site sample)
+% Only visitors are observed, so the sample contains no zeros. The draws are
+% resampled until positive, which is exactly the truncated distribution.
+
+B_backup = [];
+Y = poissrnd(Lam);
+while any(Y == 0)
+    Y(Y == 0) = poissrnd(Lam(Y == 0));
+end
+INPUT.Y = Y;
+EstimOpt.NB = 0;
+EstimOpt.Truncated = 1;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.ZTP = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+
+%% Zero-truncated Poisson with endogenous stratification
+% On-site sampling where the chance of being intercepted is proportional to the
+% number of trips. Under this scheme Y-1 is Poisson distributed.
+
+B_backup = [];
+INPUT.Y = poissrnd(Lam) + 1;
+EstimOpt.Truncated = 2;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.ZTP_ES = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+EstimOpt.Truncated = 0;
+
+
+%% Right-censored Poisson
+% Counts are only recorded up to a cut-off (e.g. "10 or more trips"). CDM will
+% censor the data for you and warn if it had to.
+
+B_backup = [];
+INPUT.Y = poissrnd(Lam);
+EstimOpt.Censored = 10;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.POISS_cens = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+EstimOpt.Censored = 0;
+
+
+%% Zero-inflated Poisson
+% A share of the sample never participates, regardless of travel cost. Xzinf
+% needs its own constant. (1-q) is the probability of being a potential visitor.
+
+B_backup = [];
+INPUT.Xzinf = [ones(n,1),unifrnd(-1,1,n,1)];
+delta = [0.3;-0.8];
+q = 1./(1+exp(-INPUT.Xzinf*delta));
+INPUT.Y = poissrnd(Lam).*binornd(1,1-q);
+
+EstimOpt.NB = 0;
+EstimOpt.Zinf = 1;
+EstimOpt.NamesZinf = {'Zvar'};
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.ZIP = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+
+%% Zero-inflated Negative Binomial
+
+B_backup = [];
+theta = 2;
+INPUT.Y = nbinrnd(theta,theta./(theta+Lam)).*binornd(1,1-q);
+EstimOpt.NB = 1;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.ZINB = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+INPUT = rmfield(INPUT,'Xzinf');
+EstimOpt.Zinf = 0;
+
+
+%% Weighted estimation
+% Weights are supplied per respondent (or per observation) and are rescaled to
+% unit mean. The footer of the output reports weighted maximum likelihood.
+
+B_backup = [];
+INPUT.Y = poissrnd(Lam);
+INPUT.W = unifrnd(0.5,1.5,n,1);
+EstimOpt.NB = 0;
+
+[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.POISS_W = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+INPUT = rmfield(INPUT,'W');
+
+
+%% Comparing models
+% stats = [LL; LL0; McFadden R2; (unused); AIC/n; BIC/n; n; r; k]
+
+fprintf('\n%-28s %12s %10s %10s\n','model','LL','AIC/n','k')
+models = {'POISS','NB','ZIP','ZINB'};
+for i = 1:numel(models)
+    if isfield(Results,models{i})
+        s = Results.(models{i}).stats;
+        fprintf('%-28s %12.2f %10.4f %10d\n',models{i},s(1),s(5),s(9))
+    end
+end
