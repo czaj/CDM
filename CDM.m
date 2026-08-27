@@ -1,63 +1,80 @@
 function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
-% POISS creates a simple count model
-%   That is either Poisson, Negative binomial 
+% CDM estimates a count data model - Poisson or Negative Binomial, optionally
+% zero-inflated, zero-truncated (with or without endogenous stratification)
+% and right-censored. Intended for single-site travel cost method studies.
 %
-% Syntax:   POISS(INPUT,EstimOpt,OptimOpt)
-%           POISS(INPUT,Results_old,EstimOpt,OptimOpt)
+% Syntax:   CDM(INPUT,EstimOpt,OptimOpt)
+%           CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %
 % Inputs:
-%    INPUT - clean, updated INPUT data from DataCleanTCM
-%    EstimOpt - Estimation Options (check below)
-%    OptimOpt - Optimizer Options define how algorithms converges to the final result. 
-%    They are set by default based on provided EstimOpt in DataCleanTCM, however, they are subject to change.
-%    Results_old - here one can provide old results to use as starting
-%    values
+%    INPUT - clean, updated INPUT data from DataCleanCDM
+%    EstimOpt - Estimation Options (see below)
+%    OptimOpt - Optimizer Options define how the algorithm converges to the final
+%    result. They are set by default based on the EstimOpt provided to
+%    DataCleanCDM, however, they are subject to change.
+%    Results_old - old results, used for starting values and for the LL of the
+%    constants-only model (Results.POISS0, produced by DataCleanCDM)
+%
+% INPUT data:
+%    Y - counts (non-negative integers), NCT*NP rows
+%    Xa - explanatory variables of the count equation (include your own constant)
+%    Xnb - optional covariates of overdispersion (a constant is prepended)
+%    Xzinf - covariates of zero inflation (include your own constant)
+%    W - optional weights, one per respondent or one per observation
+%    MissingInd - optional 0/1 indicator; flagged observations are removed
 %
 % EstimOpt Options:
-% Set them by e.g. Estimopt.DataFile = 'Project'
+% Set them by e.g. EstimOpt.ProjectName = 'Project'
 %
 % General basics:
-% 	DataFile  path/name of the .mat data file
-% 	Display  1; shows output, set to 0 to hide it 
-% 	ProjectName  Name of the project/model
-% 	WTP_space  set to 1 for estimation in WTP space. If missing or set to 0, MNL uses Preference Space
-% 	NCT - Number of choice tasks per person 
-% 	NAlt - Number of alternatives
-% 	NP  Number of respondents
-% 
-% 
-% Variables options:
-% 	NamesA  Names of variables in list e.g. {'-Opt out';-Cost (EUR)'}
-% 	NamesM  Names of variables of means of random parameters
-% 	NamesS  Names of variables of Scale
-% 	NLTVariables  vector specifying which attributes are to subject to non-linear transformations
-% 	NLTType  Transformation for non-linear variables. By default it is set to Box-Cox transformation (1), set to 2 in order to use Yeo-Johnson transformation
-% 
-% 
-% Parameters options:
-% 	ExpB = vector of 0; for each parameter set it to 1 to use ExpB, otherwise 0
-% 	BActive = vector of 0; for each parameter set it to 1 to constrain model parameters to their initial values
-% 	ConstVarActive = 0; set to 1 to constrain model parameters to its initial values 
-% 
-% 
-% Modelling options from DataCleanDCE:
-% 	ApproxHess = 1; for user supplied hessians, 1 for BHHH, 0 for analytical
-% 	RobustStd = 0; by default not using robust standard errors, set to 1 to use them
-% 	NumGrad = 0; uses analytical gradient in calculations, set to 1 for numerical gradient
-% 	HessEstFix = 0; Options: 
-% o	0 - use optimization Hessian, 
-% o	1 - use jacobian-based (BHHH) Hessian, 
-% o	2 - use high-precision jacobian-based (BHHH) Hessian,
-% o	3 - use numerical Hessian, 
-% o	4 - use analytical Hessian
+%   Display - 1; shows output, set to 0 to hide it
+%   ProjectName - name of the project/model, appended to the saved .xls file
+%   NCT - number of observations per respondent (1 for a cross-section)
+%   NP - number of respondents
 %
-% Example: 
-%    Results.POISS = POISS(INPUT,Results,EstimOpt,OptimOpt);
+% Model options:
+%   NB - 0 for Poisson (default), 1 for Negative Binomial (NB2)
+%   Zinf - set to 1 for a zero-inflated model (requires INPUT.Xzinf)
+%   probit - set to 1 to use a probit rather than a logit inflation equation
+%   Truncated - 0 none (default), 1 zero truncation, 2 zero truncation with
+%     endogenous stratification (on-site sample)
+%   Censored - right-censoring point; observations above it are censored
+%   TC_par_index - which parameter of Xa is the travel cost, used to report
+%     consumer surplus per trip as -1/beta
+%
+% Variables options:
+%   NamesA - names of the variables in Xa, e.g. {'Cons';'Travel cost'}
+%   NamesNB - names of the covariates of overdispersion (without the constant)
+%   NamesZinf - names of the covariates of zero inflation (without the constant)
+%
+% Parameters options:
+%   BActive = vector of 1s; set an element to 0 to constrain that parameter to
+%     its initial value
+%   ConstVarActive = 0; set to 1 to use constrained optimization
+%
+% Modelling options from DataCleanCDM:
+%   ApproxHess = 1; for user supplied hessians, 1 for BHHH, 0 for analytical
+%   RobustStd = 0; by default not using robust standard errors, set to 1 to use them
+%   NumGrad = 0; uses analytical gradient in calculations, set to 1 for numerical gradient
+%   RealMin = 0; set to 1 to guard the likelihood against underflow to zero
+%   HessEstFix = 0; Options:
+% o   0 - use optimization Hessian,
+% o   1 - use jacobian-based (BHHH) Hessian,
+% o   2 - use high-precision jacobian-based (BHHH) Hessian,
+% o   3 - use numerical Hessian,
+% o   4 - use analytical Hessian (not derived for count models - falls back to 3)
+%
+% Example:
+%    [INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+%    Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
+%
+% See also DataCleanCDM, LL_CDM, CDM_demo
+%
+% Author: Mikolaj Czajkowski, Professor
+% University of Warsaw, Faculty of Economic Sciences
+% email address: mik@czaj.org
+% Website: http://czaj.org/#
 
-
-%TC_par_index - which parameter to use for CS calculation, default = 2
-%clear
-%clc
 global B_backup;
 
 %% 
@@ -71,7 +88,7 @@ Results.stats = [];
 %% check input:
 
 if nargin<3
-    error('Too few input arguments for POISS(INPUT,EstimOpt,OptimOpt)')
+    error('Too few input arguments for CDM(INPUT,EstimOpt,OptimOpt)')
 end
 %how the output is presented
 format shortG;
@@ -124,9 +141,6 @@ if isfield(INPUT, 'Xzinf') == 0 || numel(INPUT.Xzinf) == 0
     else
         INPUT.Xzinf = zeros(size(INPUT.Y,1),0);
     end
-else
-    INPUT.Xzinf = INPUT.Xzinf;
-    disp('test done');
 end
 
 EstimOpt.NVarZinf = size(INPUT.Xzinf,2);
@@ -165,11 +179,49 @@ if isfield(EstimOpt,'Censored') == 0|| EstimOpt.Censored < 1
     EstimOpt.Censored = 0;
 end
 
-% weights
-if isfield(INPUT,'W') == 0 || length(INPUT.W) ~= length(INPUT.Y)
-    INPUT.W = ones(length(INPUT.Y),1);
+if isfield(EstimOpt,'HessEstFix') && EstimOpt.HessEstFix == 4 % analytical Hessian not derived for count data models yet
+    if EstimOpt.Display == 1
+        cprintf(rgb('DarkOrange'), 'WARNING: Analytical Hessian not available for count data models - using numerical Hessian instead (EstimOpt.HessEstFix = 3) \n')
+    end
+    EstimOpt.HessEstFix = 3;
+end
+
+% dependent variable
+if any(~isfinite(INPUT.Y)) || any(INPUT.Y < 0) || any(INPUT.Y ~= floor(INPUT.Y))
+    error('INPUT.Y must contain non-negative integers (counts)')
+end
+
+if EstimOpt.Censored > 0 && any(INPUT.Y > EstimOpt.Censored)
+    if EstimOpt.Display == 1
+        cprintf(rgb('DarkOrange'), ['WARNING: ',num2str(sum(INPUT.Y > EstimOpt.Censored)),' observation(s) with Y > EstimOpt.Censored - censoring them at ',num2str(EstimOpt.Censored),'. \n'])
+    end
+    INPUT.Y = min(INPUT.Y,EstimOpt.Censored);
+end
+
+if EstimOpt.Truncated > 0 && any(INPUT.Y == 0)
+    error('Zero-truncated model requested (EstimOpt.Truncated > 0) but INPUT.Y contains %d zero(s)',sum(INPUT.Y == 0))
+end
+
+% weights - DataCleanCDM leaves them at the respondent level, the likelihood needs
+% one per observation (cf. MNL.m). Never replace mis-sized weights silently.
+NObs = size(INPUT.Y,1);
+if isfield(INPUT,'W') == 0 || isempty(INPUT.W)
+    INPUT.W = ones(NObs,1);
 else
     INPUT.W = INPUT.W(:);
+    if numel(INPUT.W) == NObs % already at the observation level
+    elseif isfield(EstimOpt,'NCTMiss') && numel(INPUT.W) == numel(EstimOpt.NCTMiss)
+        NCTMiss = EstimOpt.NCTMiss(:);
+        Wtmp = zeros(NObs,1);
+        Wtmp(1:NCTMiss(1)) = INPUT.W(1);
+        for i = 2:numel(NCTMiss)
+            Wtmp(sum(NCTMiss(1:i-1))+1:sum(NCTMiss(1:i))) = INPUT.W(i);
+        end
+        INPUT.W = Wtmp;
+    else
+        error('Incorrect size of the weights vector - expected %d (one per observation) or %d (one per respondent)',NObs,EstimOpt.NP)
+    end
+    INPUT.W = NObs*INPUT.W/sum(INPUT.W);
 end
 if isfield(EstimOpt,'NamesA') == 0 || isempty(EstimOpt.NamesA) || length(EstimOpt.NamesA) ~= EstimOpt.NVarA
     EstimOpt.NamesA = (1:EstimOpt.NVarA)';
@@ -180,15 +232,19 @@ if isfield(EstimOpt,'NamesA') == 0 || isempty(EstimOpt.NamesA) || length(EstimOp
 elseif size(EstimOpt.NamesA,1) ~= EstimOpt.NVarA
     EstimOpt.NamesA = EstimOpt.NamesA';
 end
-%if add NB>1
-if EstimOpt.NVarNB > 1 
-    % if isfield(EstimOpt,'NamesNB') == 0 || isempty(EstimOpt.NamesNB)|| length(EstimOpt.NamesNB) ~= (EstimOpt.NVarNB-1)
-    %     EstimOpt.NamesNB = (1:EstimOpt.NVarNB-1)';
-    %     EstimOpt.NamesNB = cellstr(num2str(EstimOpt.NamesNB));
-    % elseif size(EstimOpt.NamesNB,1) ~= EstimOpt.NVarNB - 1
-    %     EstimOpt.NamesNB = EstimOpt.NamesNB';
-    % end
-    % EstimOpt.NamesNB = [{'Cons'};EstimOpt.NamesNB];
+% covariates of overdispersion - INPUT.Xnb gets a constant prepended, so the user
+% supplies NVarNB-1 names and 'Cons' labels the intercept of the ln(alpha) equation
+if EstimOpt.NVarNB > 1
+    if isfield(EstimOpt,'NamesNB') == 0 || isempty(EstimOpt.NamesNB) || length(EstimOpt.NamesNB) ~= (EstimOpt.NVarNB-1)
+        EstimOpt.NamesNB = (1:EstimOpt.NVarNB-1)';
+        EstimOpt.NamesNB = cellstr(num2str(EstimOpt.NamesNB));
+        if EstimOpt.Display == 1
+            disp('Variable names (NamesNB) unspecified, numbers used instead')
+        end
+    elseif size(EstimOpt.NamesNB,1) ~= EstimOpt.NVarNB - 1
+        EstimOpt.NamesNB = EstimOpt.NamesNB';
+    end
+    EstimOpt.NamesNB = [{'Cons'};EstimOpt.NamesNB];
 else
     EstimOpt.NamesNB = {'ln alpha'};
 end
@@ -234,12 +290,9 @@ if  ~exist('b0','var')
     end
     b0 = regress(log(INPUT.Y+0.1), INPUT.Xa);
 
-    if EstimOpt.NVarNB == 1
+    if EstimOpt.NVarNB > 0 % intercept plus any covariates of overdispersion
         b0 = [b0; zeros(EstimOpt.NVarNB,1)];
     end
-
-    %NOWY KOD
-    %jakie miejsca startowe?
 
     if EstimOpt.Zinf == 1
         b0 = [b0; zeros(EstimOpt.NVarZinf,1)];
@@ -373,6 +426,7 @@ end
 
 Results.LL = -LL;
 Results.b0_old = b0;
+
 
 if EstimOpt.HessEstFix == 1
 	f = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);

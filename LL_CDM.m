@@ -23,7 +23,7 @@ if NB == 0
         elseif Truncated == 2
             f = (fit).*(Y-1) - gammaln(Y) - exp(fit);
         elseif Truncated ==1
-            f = (fit).*Y - gammaln(Y+1) - exp(fit) - log(1 - exp(-exp(fit)));
+            f = (fit).*Y - gammaln(Y+1) - exp(fit) - log(-expm1(-exp(fit)));
         end
     else % Censored >0
         f = zeros(length(Y),1);
@@ -52,13 +52,13 @@ if NB == 0
 
         elseif Truncated == 2
             %if Y< C
-            f(Y ~= Censored) = (Xa(Y ~= Censored,:)*b).*(Y(Y ~= Censored)-1) - gammaln(Y(Y ~= Censored)) - exp(Xa(Y ~= Censored,:)*b);
+            f(Y ~= Censored) = (Xa(Y ~= Censored,:)*b(1:NVarA)).*(Y(Y ~= Censored)-1) - gammaln(Y(Y ~= Censored)) - exp(Xa(Y ~= Censored,:)*b(1:NVarA));
 
             %if Y=C
             vec = 0:(Censored - 2);
             vec = vec(ones(length(clam),1),:);
 
-            fitc = cXa*b;
+            fitc = cXa*b(1:NVarA);
             fitc = fitc(:,ones(Censored-1,1));
             ftmp = 1 - sum(exp( vec.*fitc - clam - gammaln(vec+1)),2);
 
@@ -70,7 +70,7 @@ if NB == 0
             end
 
         elseif Truncated ==1
-            f(Y ~= Censored) = (Xa(Y ~= Censored,:)*b).*Y(Y ~= Censored) - gammaln(Y(Y ~= Censored)+1) - exp(Xa(Y ~= Censored,:)*b) - log(1 - exp(-exp(Xa(Y ~= Censored,:)*b))); 
+            f(Y ~= Censored) = (Xa(Y ~= Censored,:)*b(1:NVarA)).*Y(Y ~= Censored) - gammaln(Y(Y ~= Censored)+1) - exp(Xa(Y ~= Censored,:)*b(1:NVarA)) - log(-expm1(-exp(Xa(Y ~= Censored,:)*b(1:NVarA))));
             
             %for Y=C
             vec = 0:(Censored - 1);
@@ -79,10 +79,10 @@ if NB == 0
             ftmp = (1 - sum(exp(vec.*fitc - clam - gammaln(vec+1)),2));
 
             if RealMin == 0
-                f(Y == Censored) = log(ftmp) - log(1 - exp(-clam));
+                f(Y == Censored) = log(ftmp) - log(-expm1(-clam));
             else
                 ftmp = max(ftmp,realmin);
-                f(Y == Censored) = log(ftmp) - log(1 - exp(-clam));
+                f(Y == Censored) = log(ftmp) - log(-expm1(-clam));
             end
             
         end
@@ -102,7 +102,7 @@ elseif NB == 1
         elseif Truncated == 1
             ThetaLam = theta./(exp(fit) + theta);
 
-            f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(1-(ThetaLam).^(theta));
+            f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(-expm1(theta.*log(ThetaLam)));
         elseif Truncated == 2
 
             f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) + log(Y) - fit;
@@ -159,7 +159,7 @@ elseif NB == 1
             end
 
 
-        elseif Truncated == 1 % Coś tu nie działa, nie estymuje poprawnie parametrów
+        elseif Truncated == 1
             %if Y< C
 %             cfit = cfit(:,1:end-1);
 %             cfit2 = cfit2(:,1:end-1);
@@ -169,13 +169,13 @@ elseif NB == 1
             f(Y ~= Censored) = gammaln(theta(Y ~= Censored)+Y(Y ~= Censored))-gammaln(theta(Y ~= Censored))-gammaln(Y(Y ~= Censored)+1)...
                 -theta(Y ~= Censored).*fit2(Y ~= Censored) + Y(Y ~= Censored).*fit(Y ~= Censored)...
                 - (Y(Y ~= Censored)+theta(Y ~= Censored)).*log(theta(Y ~= Censored) + exp(fit(Y ~= Censored)))...
-                - log(1-(ThetaLam(Y ~= Censored)).^(theta(Y ~= Censored)));
+                - log(-expm1(theta(Y ~= Censored).*log(ThetaLam(Y ~= Censored))));
             
             %if Y=C
             % - log(1-(ThetaLam).^(theta))
             
 %             cThetaLam = ThetaLam(Y == Censored);
-            trunc_corr = (1-(ThetaLam(Y == Censored)).^(theta(Y == Censored)));
+            trunc_corr = -expm1(theta(Y == Censored).*log(ThetaLam(Y == Censored)));
             ftmp = 1 - sum(exp(gammaln(ctheta+vec)-gammaln(ctheta)-gammaln(vec+1)...
                 -ctheta.*cfit2 + vec.*cfit - (vec+ctheta).*log(ctheta + exp(cfit))),2);
            
@@ -187,7 +187,7 @@ elseif NB == 1
 
 % Without censoring
 %             ThetaLam = theta./(exp(fit) + theta);
-%             f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(1-(ThetaLam).^(theta));
+%             f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(-expm1(theta.*log(ThetaLam)));
 
 % Without truncation
 %             f(Y ~= Censored) = gammaln(theta(Y ~= Censored)+Y(Y ~= Censored))-gammaln(theta(Y ~= Censored))-gammaln(Y(Y ~= Censored)+1)-theta(Y ~= Censored).*fit2(Y ~= Censored) ...
@@ -199,7 +199,7 @@ elseif NB == 1
             if RealMin == 0
                 f(Y == Censored) = log(ftmp) - log(trunc_corr);
             else
-                ftmp = max(ftmp,RealMin);
+                ftmp = max(ftmp,realmin);
                 f(Y == Censored) = log(ftmp)  - log(trunc_corr);
             end
 
@@ -232,10 +232,10 @@ if nargout == 2
                 g = Xa.*Y(:, ones(1, NVarA)) - Lam(:, ones(1, NVarA)).*Xa;
                 g = -g;
             elseif  Truncated ==1
-                truncation_correction = Lam .* exp(-Lam) ./ (1 - exp(-Lam));
+                truncation_correction = Lam .* exp(-Lam) ./ (-expm1(-Lam));
                 g = Xa .* (Y - Lam - truncation_correction);
                 g = -g;
-%                 f = (fit).*Y - gammaln(Y+1) - exp(fit) - log(1 - exp(-exp(fit)));
+%                 f = (fit).*Y - gammaln(Y+1) - exp(fit) - log(-expm1(-exp(fit)));
             elseif  Truncated ==2
                 g = Xa.*(Y(:, ones(1, NVarA)) - 1) - Lam(:, ones(1, NVarA)).*Xa;
                 g = -g;
@@ -271,7 +271,7 @@ if nargout == 2
 
 
             elseif  Truncated ==1
-                truncation_correction = Lam .* exp(-Lam) ./ (1 - exp(-Lam));
+                truncation_correction = Lam .* exp(-Lam) ./ (-expm1(-Lam));
 
                 %for Y<C
                 g(Y ~= Censored,:) = Xa(Y ~= Censored,:) .* (Y(Y ~= Censored,:) - Lam(Y ~= Censored,:) - truncation_correction(Y ~= Censored,:));
@@ -308,12 +308,12 @@ if nargout == 2
     
             elseif Truncated ==1
        
-                gtmp = (ThetaLam.^(theta+1))./(1- ThetaLam.^theta);
+                gtmp = (ThetaLam.^(theta+1))./(-expm1(theta.*log(ThetaLam)));
                 gtmp = gtmp.*Xa.*Lam;
                 g = g - gtmp;
     
                 gtmp = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
-                gtmp = gtmp./((theta+Lam).*(1-ThetaLam.^theta));
+                gtmp = gtmp./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
                 gtmp = gtmp.*Xnb.*theta;
                 gnb = gnb - gtmp;
             end
@@ -322,8 +322,17 @@ if nargout == 2
             txnb = theta(:, ones(1, NVarNB)).*Xnb;
             fit2 = Xnb*b(NVarA+1:NVarA+NVarNB);
 
-            u = ctheta./(ctheta+exp(cfit));
-            ut = (u.^ctheta)./gamma(ctheta);
+            % NB pmf at the censored cell, for k = 0 ... Censored-1. Everything goes
+            % through gammaln: gamma(theta) overflows to Inf for theta > 171, which is
+            % reached at ln(alpha) < -5.2, i.e. exactly when the data are near-Poisson.
+            clam = exp(cfit);
+            u = ctheta./(ctheta+clam);
+            fk = exp(gammaln(ctheta+vec) - gammaln(ctheta) - gammaln(vec+1) ...
+                + ctheta.*log(u) + vec.*cfit - vec.*log(ctheta+clam));
+
+            % d log f(k) / d beta = u*(k-lambda)                  (times Xa)
+            % d log f(k) / d s    = -theta*dlnf_ds, s = Xnb*gamma (times Xnb)
+            dlnf_ds = psi(ctheta+vec) - psi(ctheta) + log(u) + 1 - u - vec./(ctheta+clam);
 
             % Y<C
             g = zeros(length(Y),EstimOpt.NVarA);
@@ -335,66 +344,46 @@ if nargout == 2
                 +log(theta(Y ~= Censored)+Lam(Y ~= Censored))+ (theta(Y ~= Censored)+Y(Y ~= Censored))./(theta(Y ~= Censored)+Lam(Y ~= Censored));
             gnb(Y ~= Censored,:)  = txnb(Y ~= Censored,:).*gnb_tmp(:, ones(1, NVarNB));
                 
-            if Truncated == 0
-                % Y=C
-                gtmp = sum(exp(gammaln(ctheta+vec)-gammaln(vec+1)+vec.*cfit - vec.*log(ctheta+exp(cfit))).*(exp(cfit)-vec),2);
-                gtmp = gtmp.*ut.*u./ftmp;
-                g(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarA)).*Xa(Y == Censored,:);
-                
+            if Truncated == 2
+                % Endogenous stratification (on-site sample): the censored cell mixes
+                % the size-biased masses P*(k) = k*f(k)/lambda, not f(k). Both the
+                % weights and the per-k derivative w.r.t. beta change accordingly:
+                %   d log P*(k) / d beta = u*(k-lambda) - 1
+                %   d log P*(k) / d s    = d log f(k) / d s   (log k - log lambda is free of gamma)
+                pk = fk.*vec./clam;
 
-                gtmp = exp(gammaln(ctheta+vec) - gammaln(vec+1) +vec.*cfit - vec.*log(ctheta+exp(cfit)));
-                gtmp = sum(gtmp.*(psi(ctheta+vec) - psi(ctheta) - vec./(ctheta + exp(cfit)) + log(ctheta)- log(ctheta+exp(cfit)) + 1 - exp(log(ctheta) - log(ctheta+exp(cfit)))),2);
-                gtmp = gtmp.*ut.*ctheta(:,1)./ftmp;
-                gnb(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarNB)).*Xnb(Y == Censored,:);
-
-            elseif Truncated ==2
-                % Y<C 
-                % g(Y ~= Censored,:) = Xa(Y ~= Censored,:).*Y(Y ~= Censored, ones(1, NVarA)) - (Y(Y ~= Censored, ones(1, NVarA))...
-                %     + theta(Y ~= Censored, ones(1, NVarA))).*Lam(Y ~= Censored, ones(1, NVarA)).*Xa(Y ~= Censored,:)./(theta(Y ~= Censored, ones(1, NVarA))+Lam(Y ~= Censored, ones(1, NVarA)))...
-                %     - Xa(Y ~= Censored,:);
+                % Y<C
                 g(Y ~= Censored,:) = g(Y ~= Censored,:) - Xa(Y ~= Censored,:);
 
-                % (the same as for truncated =0)
-                % gnb = zeros(length(Y),EstimOpt.NVarNB);
-                % gnb_tmp  = -psi(theta(Y ~= Censored)+Y(Y ~= Censored))+psi(theta(Y ~= Censored))-1+fit2(Y ~= Censored)...
-                %     +log(theta(Y ~= Censored)+Lam(Y ~= Censored))+ (theta(Y ~= Censored)+Y(Y ~= Censored))./(theta(Y ~= Censored)+Lam(Y ~= Censored));
-                % gnb(Y ~= Censored,:)  = txnb(Y ~= Censored,:).*gnb_tmp(:, ones(1, NVarNB));
-
-                % Y=C 
-                % gtmp = sum(exp(gammaln(ctheta+vec)-gammaln(vec+1)+vec.*cfit - vec.*log(ctheta+exp(cfit))).*(exp(cfit)-vec),2);
-                % gtmp = sum(exp(gammaln(ctheta+vec)-gammaln(vec+1)+vec.*cfit - vec.*log(ctheta+exp(cfit)) + log(vec) - cfit).*(exp(cfit)-vec),2);
-                % gtmp = gtmp.*ut.*u./ftmp;
-
-                gtmp = sum(exp(gammaln(ctheta+vec)-gammaln(vec+1)+vec.*cfit - vec.*log(ctheta+exp(cfit)) + log(vec)).*(exp(cfit)-vec),2)./exp(exp(cfit));
-                gtmp = gtmp.*ut.*u./ftmp;
+                % Y=C: d log ftmp / d beta = [ sum_k P*(k) + u*sum_k P*(k)*(lambda-k) ] / ftmp
+                gtmp = (sum(pk,2) + u(:,1).*sum(pk.*(clam-vec),2))./ftmp;
                 g(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarA)).*Xa(Y == Censored,:);
-                
-                % (the same as for truncated =0)
-                gtmp = exp(gammaln(ctheta+vec) - gammaln(vec+1) +vec.*cfit - vec.*log(ctheta+exp(cfit)));
-                gtmp = sum(gtmp.*(psi(ctheta+vec) - psi(ctheta) - vec./(ctheta + exp(cfit)) + log(ctheta)- log(ctheta+exp(cfit)) + 1 - exp(log(ctheta) - log(ctheta+exp(cfit)))),2);
-                gtmp = gtmp.*ut.*ctheta(:,1)./ftmp;
+
+                % Y=C: d log ftmp / d s = theta * sum_k P*(k)*dlnf_ds / ftmp
+                gtmp = ctheta(:,1).*sum(pk.*dlnf_ds,2)./ftmp;
                 gnb(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarNB)).*Xnb(Y == Censored,:);
 
-            elseif Truncated ==1
-                
-                gtmp = sum(exp(gammaln(ctheta+vec)-gammaln(vec+1)+vec.*cfit - vec.*log(ctheta+exp(cfit))).*(exp(cfit)-vec),2);
-                gtmp = gtmp.*ut.*u./ftmp;
+            else % Truncated == 0 or 1 - the censored cell mixes the plain NB masses
+                % d log ftmp / d beta = u * sum_k f(k)*(lambda-k) / ftmp
+                gtmp = u(:,1).*sum(fk.*(clam-vec),2)./ftmp;
                 g(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarA)).*Xa(Y == Censored,:);
-                
-                gtrunc = (ThetaLam.^(theta+1))./(1- ThetaLam.^theta);
-                gtrunc = gtrunc.*Xa.*Lam;
-                g = g - gtrunc;
-    
-                gtmp = exp(gammaln(ctheta+vec) - gammaln(vec+1) +vec.*cfit - vec.*log(ctheta+exp(cfit)));
-                gtmp = sum(gtmp.*(psi(ctheta+vec) - psi(ctheta) - vec./(ctheta + exp(cfit)) + log(ctheta)- log(ctheta+exp(cfit)) + 1 - exp(log(ctheta) - log(ctheta+exp(cfit)))),2);
-                gtmp = gtmp.*ut.*ctheta(:,1)./ftmp;
+
+                % d log ftmp / d s = theta * sum_k f(k)*dlnf_ds / ftmp
+                gtmp = ctheta(:,1).*sum(fk.*dlnf_ds,2)./ftmp;
                 gnb(Y == Censored,:) = gtmp(:, ones(1, EstimOpt.NVarNB)).*Xnb(Y == Censored,:);
 
-                gtruncnb = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
-                gtruncnb = gtruncnb./((theta+Lam).*(1-ThetaLam.^theta));
-                gtruncnb = gtruncnb.*Xnb.*theta;
-                gnb = gnb - gtruncnb;
+                if Truncated == 1
+                    % The zero-truncation correction -log(1-u^theta) has the same form
+                    % for both groups, so it is subtracted from every row.
+                    gtrunc = (ThetaLam.^(theta+1))./(-expm1(theta.*log(ThetaLam)));
+                    gtrunc = gtrunc.*Xa.*Lam;
+                    g = g - gtrunc;
 
+                    gtruncnb = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
+                    gtruncnb = gtruncnb./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
+                    gtruncnb = gtruncnb.*Xnb.*theta;
+                    gnb = gnb - gtruncnb;
+                end
             end
         end
 

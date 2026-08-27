@@ -130,12 +130,20 @@ for i = 1:Dim1
             fixed = 0;
         end
         RowOut = num2cell(Block);
+        isNBblock = EstimOpt.NB==1 && strcmp({'DetailsNB'},subsref(fieldnames(Heads), struct('type', '()', 'subs', {{i+1, 1}}))); % use subsref since indexing before saving does not work
+        % H0: ln(alpha) = 0 is not the Poisson boundary, so the intercept of the
+        % overdispersion equation gets no stars. Its covariates are ordinary tests.
+        hideNBsig = isNBblock && EstimOpt.NVarNB == 1;
         for s=1:size(Block,2)/4
-            if EstimOpt.NB==1 && strcmp({'DetailsNB'},subsref(fieldnames(Heads), struct('type', '()', 'subs', {{i+1, 1}}))) % use subsref since indexing before saving does not work 
+            if hideNBsig
                 RowOut(:,4*s-2) = cellstr('');
                 RowOut(:,4*s) = cellstr('');
             else
                 RowOut(:,4*s-2) = star_sig_cell(Block(:,s*4));
+                if isNBblock
+                    RowOut(1,4*s-2) = cellstr('');
+                    RowOut(1,4*s) = cellstr('');
+                end
             end
         end
         RowOut = [Names.(Template1{i+1,1}), distType(Results.Dist, fixed, size(Block,1), Type), RowOut]; %it will crash if size of the block and number of variables will differ
@@ -148,12 +156,12 @@ for i = 1:Dim1
         else
             if size(Block,2)/4 >1
                 headn1 = [head3, repmat(head2, 1, size(Block,2)/4 - 1)];
-                if EstimOpt.NB==1 && strcmp({'DetailsNB'},subsref(fieldnames(Heads), struct('type', '()', 'subs', {{i+1, 1}}))) % use subsref since indexing before saving does not work 
+                if hideNBsig
                     headn1 = [head_nb3, repmat(head_nb2, 1, size(Block,2)/4 - 1)];
                 end
             else
                 headn1 = head3;
-                if EstimOpt.NB==1 && strcmp({'DetailsNB'},subsref(fieldnames(Heads), struct('type', '()', 'subs', {{i+1, 1}}))) % use subsref since indexing before saving does not work 
+                if hideNBsig
                     headn1 = head_nb3;
                 end
             end

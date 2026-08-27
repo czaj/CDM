@@ -1,4 +1,23 @@
 function [INPUT, Results, EstimOpt, OptimOpt] = DataCleanCDM(INPUT,EstimOpt)
+% DataCleanCDM prepares the data and options for CDM.
+%
+% It converts INPUT to double, removes observations flagged in INPUT.MissingInd,
+% puts the weights on a per-respondent basis and scales them to unit mean, fills
+% in the estimation and optimizer defaults, and estimates the constants-only
+% model whose log-likelihood is used for McFadden's pseudo-R2.
+%
+% Syntax:   [INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt)
+%
+% Required EstimOpt fields: NP (respondents) and NCT (observations per
+% respondent). See the help of CDM for everything else.
+%
+% See also CDM, LL_CDM, CDM_demo
+%
+% Author: Mikolaj Czajkowski, Professor
+% University of Warsaw, Faculty of Economic Sciences
+% email address: mik@czaj.org
+% Website: http://czaj.org/#
+
 
 % global TolB
 % save tmp1
@@ -10,37 +29,53 @@ for i=1:length(inputnames)
 end
 
 if isfield(INPUT,'MissingInd') == 0 || isempty(INPUT.MissingInd)
-    INPUT.MissingInd = zeros(size(INPUT.Y));
+    INPUT.MissingInd = zeros(size(INPUT.Y,1),1);
 end
+INPUT.MissingInd = double(INPUT.MissingInd(:) ~= 0);
 
 EstimOpt.MissingCT = [];
+NP_in = EstimOpt.NP; % no. of respondents before dropping the incomplete ones
 
-if sum(INPUT.MissingInd) ~= 0
-    MissingInd_tmp = reshape(INPUT.MissingInd,EstimOpt.NCT,EstimOpt.NP);
-    MissingCT = MissingInd_tmp == 1; % missing NCT
+% Weights are kept at the respondent level throughout DataCleanCDM (as in DataCleanDCE)
+% and expanded to the observation level by the model function.
+if isfield(INPUT,'W') && ~isempty(INPUT.W)
+    INPUT.W = INPUT.W(:);
+    if numel(INPUT.W) == EstimOpt.NCT*NP_in
+        INPUT.W = INPUT.W(1:EstimOpt.NCT:end); % one weight per respondent
+    elseif numel(INPUT.W) ~= NP_in
+        error('Incorrect size of the weights vector - provide one weight per respondent (EstimOpt.NP) or per observation (EstimOpt.NCT*EstimOpt.NP)')
+    end
+end
+
+if any(INPUT.MissingInd)
+    MissingCT = reshape(INPUT.MissingInd,EstimOpt.NCT,NP_in) == 1; % missing observations
     MissingP = sum(MissingCT,1) == EstimOpt.NCT; % respondents with all NCT missing
-    
-    if sum(MissingP) > 0 % respondents with 0 NCTs - remove from INPUT
-        MissingPrep = reshape(MissingP(ones(EstimOpt.NCT,1),:),EstimOpt.NCT*EstimOpt.NP,1);
-        INPUT_fields = fields(INPUT);
-        for i = 1:size(INPUT_fields,1)
-            tmp = INPUT.(INPUT_fields{i});
-                tmp(MissingPrep,:) = [];
-                INPUT.(INPUT_fields{i}) = tmp;
-        end
-        cprintf(rgb('DarkOrange'), ['WARNING: Dataset includes ', num2str(sum(MissingP)), ' respondents with 0 completed choice tasks. Adjusting NP from ', num2str(EstimOpt.NP), ' to ',num2str(EstimOpt.NP-sum(MissingP)) ,'.\n'])
-        EstimOpt.NP = EstimOpt.NP - sum(MissingP);
-    end
-    
-    
-    if any(MissingCT(:)) > 0 % respondents with missing NCT - replace Xa and Y with NaN
-        %cprintf ('text', 'The dataset contains %d choice tasks with missing responses (out of the total of %d choice tasks).\n', sum(sum(MissingCT)),numel(MissingCT))
-        cprintf ('text', ['The dataset contains ',num2str(sum(sum(MissingCT))),' choice tasks with missing responses (out of the total of ',num2str(numel(MissingCT)) ,' choice tasks).\n'])
-        INPUT.Y(INPUT.MissingInd == 1) = NaN;
-        INPUT.Xa(INPUT.MissingInd == 1,:) = NaN;
 
+    cprintf('text',['The dataset contains ',num2str(sum(INPUT.MissingInd)),' observation(s) with missing data (out of the total of ',num2str(numel(INPUT.MissingInd)),') - removing them.\n'])
+
+    if any(MissingP) % respondents with 0 observations left
+        cprintf(rgb('DarkOrange'),['WARNING: Dataset includes ',num2str(sum(MissingP)),' respondents with 0 completed observations. Adjusting NP from ',num2str(NP_in),' to ',num2str(NP_in-sum(MissingP)),'.\n'])
+        EstimOpt.NP = NP_in - sum(MissingP);
+        if isfield(INPUT,'W') && ~isempty(INPUT.W)
+            INPUT.W = INPUT.W(~MissingP);
+        end
     end
-    EstimOpt.NCTMiss = EstimOpt.NCT - sum(MissingCT,1)';
+
+    EstimOpt.NCTMiss = EstimOpt.NCT - sum(MissingCT(:,~MissingP),1)';
+
+    % Drop the incomplete observations from every observation-level field. Leaving
+    % them in as NaN would make the log-likelihood NaN for the whole sample.
+    keepRows = INPUT.MissingInd == 0;
+    INPUT_fields = fieldnames(INPUT);
+    for i = 1:numel(INPUT_fields)
+        if strcmp(INPUT_fields{i},'W') % weights stay at the respondent level
+            continue
+        end
+        tmp = INPUT.(INPUT_fields{i});
+        if size(tmp,1) == EstimOpt.NCT*NP_in
+            INPUT.(INPUT_fields{i}) = tmp(keepRows,:);
+        end
+    end
 else
     EstimOpt.NCTMiss = EstimOpt.NCT*ones(EstimOpt.NP,1);
 end
@@ -48,15 +83,9 @@ end
 EstimOpt.NObs = sum(EstimOpt.NCTMiss);
 
 if isfield(INPUT,'W') && ~isempty(INPUT.W)
-    if size(INPUT.W(:)) ~= size(INPUT.Y(:))
-        error('Incorrect size of the weights vector')
-    else
-        INPUT.W = INPUT.W(:);
-        INPUT.W = INPUT.W(1:EstimOpt.NCT:end);
-        if sum(INPUT.W) ~= EstimOpt.NP
-            cprintf(rgb('DarkOrange'), ['WARNING: Scaling weights for unit mean. \n'])
-            INPUT.W = INPUT.W - mean(INPUT.W) + 1;
-        end
+    if abs(sum(INPUT.W) - EstimOpt.NP) > 1e-10*EstimOpt.NP
+        cprintf(rgb('DarkOrange'), ['WARNING: Scaling weights for unit mean. \n'])
+        INPUT.W = EstimOpt.NP*INPUT.W/sum(INPUT.W);
     end
 else
     INPUT.W = ones(EstimOpt.NP,1);
@@ -70,7 +99,6 @@ EstimOpt.NVarA = size(INPUT.Xa,2); % Number of attributes
 
 %EstimOpt.NVarZinf = size(INPUT.Xzinf,2);
 
-EstimOpt.Display = 1;
 if isfield(EstimOpt,'HaltonSkip') == 0
     EstimOpt.HaltonSkip = 1; % specify no of rows in halton sequence to skip (default=1)
 end
@@ -156,7 +184,7 @@ OptimOpt.OutputFcn = @outputf;
 %% Estimate constants-only Poisson model:
 
 INPUT_0.Y = INPUT.Y;
-INPUT_0.Xa = ones(EstimOpt.NCT*EstimOpt.NP,1);
+INPUT_0.Xa = ones(size(INPUT.Y,1),1); % NCT*NP no longer holds once incomplete observations are removed
 INPUT_0.MissingInd = INPUT.MissingInd;
 INPUT_0.W = INPUT.W; %ones(EstimOpt.NP,1);
 EstimOpt_0 = EstimOpt;
