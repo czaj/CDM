@@ -104,8 +104,17 @@ if isfield(EstimOpt, 'Zinf') == 0 || EstimOpt.Zinf ==0
     EstimOpt.NVarZinf = 0;
 end
 
-if isfield(EstimOpt, 'TC_par_index') == 0 || EstimOpt.TC_par_index ==0
-    EstimOpt.TC_par_index = 2;
+if isfield(EstimOpt,'TC_par_index') == 0 || isempty(EstimOpt.TC_par_index) || EstimOpt.TC_par_index == 0
+    % Guessing index 2 used to be the default, which silently reported the consumer
+    % surplus of whatever happened to sit there. Match on the name instead, and
+    % report no consumer surplus at all rather than a confident wrong number.
+    EstimOpt.TC_par_index = 0;
+    if isfield(EstimOpt,'NamesA') && ~isempty(EstimOpt.NamesA)
+        hit = find(~cellfun(@isempty,regexpi(EstimOpt.NamesA(:),'cost|koszt|price|fee')),1);
+        if ~isempty(hit)
+            EstimOpt.TC_par_index = hit;
+        end
+    end
 end
 
 TC_par_index = EstimOpt.TC_par_index;
@@ -189,6 +198,14 @@ elseif EstimOpt.NB == 0
     ModelTag = 'POISS';
 else
     ModelTag = 'NB';
+end
+
+if ~ismember(EstimOpt.NB,[0 1])
+    error('EstimOpt.NB must be 0 (Poisson) or 1 (Negative Binomial); NB1/NB-P are not implemented')
+end
+
+if EstimOpt.Zinf == 1 && EstimOpt.Truncated > 0
+    error('EstimOpt.Zinf cannot be combined with EstimOpt.Truncated - a zero-inflated model is not identified in a sample without zeros. Consider a hurdle specification instead.')
 end
 
 if isfield(EstimOpt,'HessEstFix') && EstimOpt.HessEstFix == 4 % analytical Hessian not derived for count data models yet
@@ -525,9 +542,6 @@ Results.DetailsA(:,[1 3 4]) = [Results.bhat(1:EstimOpt.NVarA),Results.std(1:Esti
 if EstimOpt.NB == 1
     Results.DetailsNB = zeros(EstimOpt.NVarNB,4);
     Results.DetailsNB(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),pv(Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB))] ;
-elseif EstimOpt.NB == 2
-    Results.DetailsNB = zeros(EstimOpt.NVarNB+1,4);
-    Results.DetailsNB(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+1),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+1),pv(Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+1),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+1))] ;   
 end
 
 if EstimOpt.Zinf == 1
@@ -535,7 +549,7 @@ if EstimOpt.Zinf == 1
     Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf))] ;
 end
 
-if EstimOpt.TC_par_index <= EstimOpt.NVarA
+if TC_par_index > 0 && TC_par_index <= EstimOpt.NVarA
     Results.DetailsCS = zeros(1,4);
     Results.DetailsCS(:,[1 3 4]) = [-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)), pv(-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)))];
 end
@@ -685,7 +699,7 @@ end
 
 Tail(16,2) = {outHessian};
 
-if EstimOpt.TC_par_index <= EstimOpt.NVarA % widens Tail to 3 columns
+if TC_par_index > 0 && TC_par_index <= EstimOpt.NVarA % widens Tail to 3 columns
     Tail(18,1) = {'Descriptive statistics'};
     Tail(19,1:3) = {'var','Y',char(EstimOpt.NamesA(TC_par_index))};
     desc_y = dstats(INPUT.Y);

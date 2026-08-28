@@ -139,6 +139,7 @@ EstimOpt.Censored = 0;
 
 B_backup = [];
 INPUT.Xzinf = [ones(n,1),unifrnd(-1,1,n,1)];
+INPUT.Xzinf_saved = INPUT.Xzinf; % kept for the model comparison section below
 delta = [0.3;-0.8];
 q = 1./(1+exp(-INPUT.Xzinf*delta));
 INPUT.Y = poissrnd(Lam).*binornd(1,1-q);
@@ -181,6 +182,46 @@ Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null mode
 Results.POISS_W = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 INPUT = rmfield(INPUT,'W');
+
+
+%% Post-estimation: consumer surplus, marginal effects, fit
+% Everything a travel cost study reports, with Krinsky-Robb intervals.
+
+Results.POISS = CDM_post(Results.POISS);
+
+
+%% Comparing models against each other
+% Specification tests only make sense on one and the same sample, so this section
+% fits the competing models to a single dataset - here one with genuine
+% overdispersion and an excess of zeros.
+
+B_backup = [];
+thc = 1.5;
+qc = 1./(1+exp(-INPUT.Xzinf_saved*[0.3;-0.8]));
+Yc = nbinrnd(thc,thc./(thc+Lam)).*binornd(1,1-qc);
+
+INPUTc = struct('Xa',INPUT.Xa,'Y',Yc,'MissingInd',zeros(n,1));
+EstimOptC = EstimOpt;
+EstimOptC.NB = 0; EstimOptC.Zinf = 0;
+[INc,Res0,EstimOptC,OptimOptC] = DataCleanCDM(INPUTc,EstimOptC);
+Cmp.CDM0 = Res0.CDM0;
+Cmp.POISS = CDM(INc,Cmp,EstimOptC,OptimOptC);
+
+B_backup = [];
+EstimOptC.NB = 1;
+[INc,Res0,EstimOptC,OptimOptC] = DataCleanCDM(INPUTc,EstimOptC);
+Cmp.CDM0 = Res0.CDM0;
+Cmp.NB = CDM(INc,Cmp,EstimOptC,OptimOptC);
+
+B_backup = [];
+INPUTc.Xzinf = INPUT.Xzinf_saved;
+EstimOptC.NB = 0; EstimOptC.Zinf = 1; EstimOptC.NamesZinf = {'Zvar'};
+[INc,Res0,EstimOptC,OptimOptC] = DataCleanCDM(INPUTc,EstimOptC);
+Cmp.CDM0 = Res0.CDM0;
+Cmp.ZIP = CDM(INc,Cmp,EstimOptC,OptimOptC);
+
+CDM_compare(Cmp.POISS,Cmp.NB);   % boundary-corrected LR: is overdispersion real?
+CDM_compare(Cmp.POISS,Cmp.ZIP);  % Voung: is zero inflation needed?
 
 
 %% Comparing models

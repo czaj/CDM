@@ -118,9 +118,36 @@ These are shared with the [`DCE`](https://github.com/czaj/DCE) package and behav
 
 Note that the intercept of the overdispersion equation is reported without significance stars: H<sub>0</sub>: ln α = 0 is not the Poisson boundary, so the usual test does not answer the question people expect it to. Covariates of overdispersion are reported with ordinary tests.
 
+## Post-estimation
+
+`CDM_post` turns a fitted model into the numbers a travel cost study actually reports, and prints them:
+
+```matlab
+Results.NB = CDM_post(Results.NB);
+```
+
+| what | detail |
+| --- | --- |
+| `EY` | expected trips per observation, matched to the sampling scheme — `lambda` for a general population sample, `lambda/(1-P(0))` under zero truncation, `E[Y^2]/E[Y]` under endogenous stratification (see `CDM_EY`) |
+| `CS.PerTrip` | consumer surplus per trip, −1/β<sub>tc</sub>, with a delta-method standard error, a Krinsky-Robb interval and the interval obtained by inverting the confidence interval on β (the exact interval for a ratio with a constant numerator) |
+| `CS.PerPerson` | seasonal surplus per person, E[Y]·(−1/β<sub>tc</sub>), with a Krinsky-Robb interval |
+| `Margins` | average marginal effects on E[Y] and elasticities, with Krinsky-Robb standard errors. Elasticities are reported only for strictly positive regressors |
+| `CountFit` | observed against predicted count frequencies and a Pearson chi-square. Predicted probabilities come from the estimated likelihood, so truncation, stratification, censoring and zero inflation are all handled consistently |
+
+Right censoring deliberately does not enter `E[Y]`: it describes how trips were recorded, not how many were taken, and welfare measures need the latent expectation.
+
+`CDM_compare` tests one model against another and picks the right test:
+
+```matlab
+CDM_compare(Results.POISS,Results.NB);   % likelihood ratio, boundary-corrected
+CDM_compare(Results.POISS,Results.ZIP);  % Voung, non-nested
+```
+
+Poisson is Negative Binomial with α = 0, which sits on the boundary of the parameter space, so the likelihood ratio statistic follows an equal mixture of a point mass at zero and χ²(1) — using plain χ²(1) makes the test about twice as conservative as it should be. Zero inflation is not identified under its own null, so `CDM_compare` falls back to the Voung test there.
+
 ## Tests
 
-`tests/run_CDM_tests.m` runs the package test suite: analytical against numerical gradients over the whole grid of model specifications, the structural paths of `CDM` and `DataCleanCDM`, and parameter recovery on simulated data.
+`tests/run_CDM_tests.m` runs the package test suite: analytical against numerical gradients over the whole grid of model specifications, the structural paths of `CDM` and `DataCleanCDM`, parameter recovery on simulated data, and the post-estimation results — including a check of every expected-trip formula against Monte Carlo.
 
 ```matlab
 run_CDM_tests
