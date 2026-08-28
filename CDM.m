@@ -19,7 +19,7 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %    Y - counts (non-negative integers), NCT*NP rows
 %    Xa - explanatory variables of the count equation (include your own constant)
 %    Xnb - optional covariates of overdispersion (a constant is prepended)
-%    Xzinf - covariates of zero inflation (include your own constant)
+%    Xzinf - optional covariates of zero inflation (a constant is prepended)
 %    W - optional weights, one per respondent or one per observation
 %    MissingInd - optional 0/1 indicator; flagged observations are removed
 %
@@ -33,7 +33,9 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %   NP - number of respondents
 %
 % Model options:
-%   NB - 0 for Poisson (default), 1 for Negative Binomial (NB2)
+%   NB - 0 for Poisson (default), 1 for Negative Binomial
+%   NBtype - 2 for NB2, variance lambda + alpha*lambda^2 (default), 1 for NB1,
+%     variance lambda*(1+alpha). NB1 keeps the variance proportional to the mean
 %   Zinf - set to 1 for a zero-inflated model (requires INPUT.Xzinf)
 %   probit - set to 1 to use a probit rather than a logit inflation equation
 %   Truncated - 0 none (default), 1 zero truncation, 2 zero truncation with
@@ -135,7 +137,7 @@ if isfield(INPUT, 'Xnb') == 0 || numel(INPUT.Xnb) == 0
         INPUT.Xnb = zeros(size(INPUT.Y,1),0);
     end
 else
-    INPUT.Xnb = [ones(size(INPUT.Y,1),1), INPUT.Xnb];
+    INPUT.Xnb = addConstant(INPUT.Xnb,'Xnb',EstimOpt.Display);
 end
 EstimOpt.NVarNB = size(INPUT.Xnb,2); % Covariates of alpha (overdispersion)
 
@@ -150,6 +152,9 @@ if isfield(INPUT, 'Xzinf') == 0 || numel(INPUT.Xzinf) == 0
     else
         INPUT.Xzinf = zeros(size(INPUT.Y,1),0);
     end
+else
+    % Same convention as Xnb: supply the covariates, the constant is added here.
+    INPUT.Xzinf = addConstant(INPUT.Xzinf,'Xzinf',EstimOpt.Display);
 end
 
 EstimOpt.NVarZinf = size(INPUT.Xzinf,2);
@@ -161,7 +166,11 @@ if EstimOpt.Display == 1
     if EstimOpt.NB == 0
         disp('Estimating Poisson regression model ...')
     elseif EstimOpt.NB == 1
-        disp('Estimating Negative Binomial regression model ...')
+        if isfield(EstimOpt,'NBtype') && EstimOpt.NBtype == 1
+            disp('Estimating Negative Binomial (NB1, variance proportional to the mean) regression model ...')
+        else
+            disp('Estimating Negative Binomial (NB2) regression model ...')
+        end
     end
     if  EstimOpt.Zinf == 1
         disp('Zero-inflated')
@@ -191,17 +200,36 @@ end
 if EstimOpt.Zinf == 1
     if EstimOpt.NB == 0
         ModelTag = 'ZIP';
+    elseif EstimOpt.NBtype == 1
+        ModelTag = 'ZINB1';
     else
         ModelTag = 'ZINB';
     end
 elseif EstimOpt.NB == 0
     ModelTag = 'POISS';
+elseif EstimOpt.NBtype == 1
+    ModelTag = 'NB1';
 else
     ModelTag = 'NB';
 end
 
 if ~ismember(EstimOpt.NB,[0 1])
-    error('EstimOpt.NB must be 0 (Poisson) or 1 (Negative Binomial); NB1/NB-P are not implemented')
+    error('EstimOpt.NB must be 0 (Poisson) or 1 (Negative Binomial). For NB1 set EstimOpt.NB = 1 and EstimOpt.NBtype = 1')
+end
+
+if isfield(EstimOpt,'NBtype') == 0 || isempty(EstimOpt.NBtype)
+    EstimOpt.NBtype = 2; % NB2 - variance lambda + alpha*lambda^2
+elseif ~ismember(EstimOpt.NBtype,[1 2])
+    error('EstimOpt.NBtype must be 1 (NB1, variance lambda*(1+alpha)) or 2 (NB2, variance lambda + alpha*lambda^2)')
+end
+
+if EstimOpt.NB == 1 && EstimOpt.NBtype == 1 && EstimOpt.Censored > 0 && EstimOpt.NumGrad == 0
+    % Under NB1 the dispersion parameter moves with lambda, so beta reaches the
+    % censored cell through theta as well. That term is not derived yet.
+    if EstimOpt.Display == 1
+        cprintf(rgb('DarkOrange'), 'WARNING: analytical gradient for NB1 with censoring is not derived - switching to a numerical gradient (EstimOpt.NumGrad = 1) \n')
+    end
+    EstimOpt.NumGrad = 1;
 end
 
 if EstimOpt.Zinf == 1 && EstimOpt.Truncated > 0
@@ -602,10 +630,15 @@ if EstimOpt.NB == 0
         Head(1,1) = {'Poisson'};
     end
 else
-    if EstimOpt.Zinf == 1
-        Head(1,1) = {'Zero-inflated Negative Binomial'};
+    if EstimOpt.NBtype == 1
+        nbName = 'Negative Binomial (NB1)';
     else
-        Head(1,1) = {'Negative Binomial'};
+        nbName = 'Negative Binomial';
+    end
+    if EstimOpt.Zinf == 1
+        Head(1,1) = {['Zero-inflated ',nbName]};
+    else
+        Head(1,1) = {nbName};
     end
 end
 if isfield(EstimOpt,'Censored') == 0 || EstimOpt.Censored < 1
@@ -732,3 +765,19 @@ if EstimOpt.Display ~= 0
     Results.R_out = genOutput(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
 end
 end
+
+
+function X = addConstant(X,name,Display)
+% addConstant prepends a column of ones, dropping one the user already supplied.
+% CDM owns the constant for Xnb and Xzinf, so its label ('Cons') always lines up
+% with the first column and NamesNB/NamesZinf list the covariates only.
+isConst = all(X == X(1,:),1);
+if any(isConst)
+    if Display == 1
+        cprintf(rgb('DarkOrange'), ['WARNING: INPUT.',name,' contains a constant column - CDM adds its own, so the supplied one is dropped \n'])
+    end
+    X(:,isConst) = [];
+end
+X = [ones(size(X,1),1), X];
+end
+

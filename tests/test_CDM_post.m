@@ -152,8 +152,8 @@ ok = true; detail = '';
 try
     B_backup = [];
     clear INPUT EstimOpt
-    Xz = [ones(n,1),unifrnd(-1,1,n,1)];
-    q = 1./(1+exp(-Xz*[0.3;-0.8]));
+    Xz = unifrnd(-1,1,n,1); % covariates only - CDM prepends the constant
+    q = 1./(1+exp(-[ones(n,1),Xz]*[0.3;-0.8]));
     INPUT.Xa = Xa; INPUT.Y = poissrnd(Lam).*binornd(1,1-q); INPUT.MissingInd = zeros(n,1);
     EstimOpt.NP = n; EstimOpt.NCT = 1; EstimOpt.Display = 0;
     EstimOpt.NamesA = {'Cons';'Travel cost';'Income'};

@@ -170,12 +170,31 @@ Results.Margins = struct('AME',[AME,std(AMEsim,0,1)'], ...
 
 % P(Y = k) comes straight from the estimated likelihood, so every variant -
 % truncation, stratification, censoring, zero inflation - is handled consistently.
-kMin = double(EO.Truncated > 0);
+isHurdle = isfield(EO,'Hurdle') && EO.Hurdle == 1;
+kMin = double(EO.Truncated > 0 && ~isHurdle); % a hurdle model does predict zeros
 kMax = max(IN.Y);
 kk = kMin:kMax;
 Pk = zeros(numel(kk),1);
+EOk = EO;
+if isHurdle % LL_CDM would apply inflation to a truncated density; P(0) = 1-P
+    EOk.Zinf = 0;
+    bzinf = b(EO.NVarA+EO.NVarNB+1:end);
+    if isfield(EO,'probit') && EO.probit == 1
+        Ppart = 1-normcdf(IN.Xzinf*bzinf);
+    else
+        Ppart = 1-1./(1+exp(-IN.Xzinf*bzinf));
+    end
+end
 for i = 1:numel(kk)
-    Pk(i) = W'*exp(-LL_CDM(kk(i)*ones(size(IN.Y)),IN.Xa,IN.Xnb,IN.Xzinf,EO,b));
+    if isHurdle
+        if kk(i) == 0
+            Pk(i) = W'*(1-Ppart);
+        else
+            Pk(i) = W'*(Ppart.*exp(-LL_CDM(kk(i)*ones(size(IN.Y)),IN.Xa,IN.Xnb,IN.Xzinf,EOk,b)));
+        end
+    else
+        Pk(i) = W'*exp(-LL_CDM(kk(i)*ones(size(IN.Y)),IN.Xa,IN.Xnb,IN.Xzinf,EO,b));
+    end
 end
 nObs = numel(IN.Y);
 Obs = zeros(numel(kk),1);

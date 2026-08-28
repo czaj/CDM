@@ -85,6 +85,26 @@ INPUT = rmfield(INPUT,'Xnb');
 EstimOpt = rmfield(EstimOpt,'NamesNB');
 
 
+%% Negative Binomial 1
+% NB2 lets the variance grow with the square of the mean; NB1 keeps it
+% proportional. Which one fits better is an empirical question - CDM_compare
+% cannot rank them (they are not nested), so compare AIC or BIC.
+
+B_backup = [];
+alpha = 0.8;
+theta_nb1 = Lam/alpha; % NB1: theta = lambda/alpha
+INPUT.Y = nbinrnd(theta_nb1,theta_nb1./(theta_nb1+Lam));
+EstimOpt.NB = 1;
+EstimOpt.NBtype = 1;
+
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
+Results.NB1 = CDM(INPUT,Results,EstimOpt,OptimOpt);
+
+EstimOpt.NBtype = 2; % back to the default for the sections below
+EstimOpt.NB = 0;
+
+
 %% Zero-truncated Poisson (on-site sample)
 % Only visitors are observed, so the sample contains no zeros. The draws are
 % resampled until positive, which is exactly the truncated distribution.
@@ -138,10 +158,11 @@ EstimOpt.Censored = 0;
 % needs its own constant. (1-q) is the probability of being a potential visitor.
 
 B_backup = [];
-INPUT.Xzinf = [ones(n,1),unifrnd(-1,1,n,1)];
+% Xzinf holds the covariates only - CDM adds the constant, just as it does for Xnb
+INPUT.Xzinf = unifrnd(-1,1,n,1);
 INPUT.Xzinf_saved = INPUT.Xzinf; % kept for the model comparison section below
 delta = [0.3;-0.8];
-q = 1./(1+exp(-INPUT.Xzinf*delta));
+q = 1./(1+exp(-[ones(n,1),INPUT.Xzinf]*delta));
 INPUT.Y = poissrnd(Lam).*binornd(1,1-q);
 
 EstimOpt.NB = 0;
@@ -184,6 +205,44 @@ Results.POISS_W = CDM(INPUT,Results,EstimOpt,OptimOpt);
 INPUT = rmfield(INPUT,'W');
 
 
+%% Hurdle model
+% Two decisions: whether to go at all, and how often. The parts are estimated
+% separately because the likelihood separates.
+
+B_backup = [];
+delta_h = [0.6;-0.02;0.5];
+part = binornd(1,1./(1+exp(-INPUT.Xa*delta_h)));
+Ytr = poissrnd(Lam);
+while any(Ytr == 0)
+    Ytr(Ytr == 0) = poissrnd(Lam(Ytr == 0));
+end
+INPUT.Y = part.*Ytr;
+EstimOpt.NB = 0;
+EstimOpt.Truncated = 0;
+EstimOpt.NamesH = {'Travel cost';'Income'};
+
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
+Results.Hurdle = CDM_hurdle(INPUT,Results,EstimOpt,OptimOpt);
+Results.Hurdle = CDM_post(Results.Hurdle);
+
+
+%% Building the travel cost variable
+% The money part is straightforward; the value of travel time is a choice, so
+% the default returns the whole sensitivity panel.
+
+Trip = struct();
+Trip.Distance = unifrnd(5,200,n,1);   % one way, km
+Trip.Time = Trip.Distance/70;         % one way, hours
+Trip.CostPerKm = 0.35;
+Trip.Wage = unifrnd(15,60,n,1);
+Trip.ValuesTime = binornd(1,0.6,n,1); % 1 = would have preferred a shorter trip
+
+[TCpanel,TCdetail] = TravelCost(Trip);                              % fractions of the wage
+TCfull = TravelCost(Trip,struct('TimeRule','full'));                % full wage
+TCmix  = TravelCost(Trip,struct('TimeRule','full_or_zero'));        % full wage, or nothing
+
+
 %% Post-estimation: consumer surplus, marginal effects, fit
 % Everything a travel cost study reports, with Krinsky-Robb intervals.
 
@@ -197,7 +256,7 @@ Results.POISS = CDM_post(Results.POISS);
 
 B_backup = [];
 thc = 1.5;
-qc = 1./(1+exp(-INPUT.Xzinf_saved*[0.3;-0.8]));
+qc = 1./(1+exp(-[ones(n,1),INPUT.Xzinf_saved]*[0.3;-0.8]));
 Yc = nbinrnd(thc,thc./(thc+Lam)).*binornd(1,1-qc);
 
 INPUTc = struct('Xa',INPUT.Xa,'Y',Yc,'MissingInd',zeros(n,1));
@@ -228,7 +287,7 @@ CDM_compare(Cmp.POISS,Cmp.ZIP);  % Voung: is zero inflation needed?
 % stats = [LL; LL0; McFadden R2; (unused); AIC/n; BIC/n; n; r; k]
 
 fprintf('\n%-28s %12s %10s %10s\n','model','LL','AIC/n','k')
-models = {'POISS','NB','ZIP','ZINB'};
+models = {'POISS','NB','NB1','ZIP','ZINB','Hurdle'};
 for i = 1:numel(models)
     if isfield(Results,models{i})
         s = Results.(models{i}).stats;

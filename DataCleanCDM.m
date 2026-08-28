@@ -118,6 +118,10 @@ if isfield(EstimOpt,'ApproxHess') == 0 || (EstimOpt.ApproxHess ~= 0 && EstimOpt.
     EstimOpt.ApproxHess = 1;
 end
 
+if isfield(EstimOpt,'NBtype') == 0 || isempty(EstimOpt.NBtype)
+    EstimOpt.NBtype = 2; % 2 = NB2 (default), 1 = NB1
+end
+
 if isfield(EstimOpt,'RealMin') == 0 || (EstimOpt.RealMin ~= 0 && EstimOpt.RealMin ~= 1)
     EstimOpt.RealMin = 0;
 end

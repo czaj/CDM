@@ -12,6 +12,11 @@ NVarA = EstimOpt.NVarA;
 NVarNB = EstimOpt.NVarNB;
 NVarZinf = EstimOpt.NVarZinf;
 Censored = EstimOpt.Censored;
+if isfield(EstimOpt,'NBtype') && ~isempty(EstimOpt.NBtype)
+    NBtype = EstimOpt.NBtype; % 2 = NB2 (default), 1 = NB1
+else
+    NBtype = 2;
+end
 RealMin = EstimOpt.RealMin; 
 
 % Censoring masks, built once - they were re-evaluated on every use before.
@@ -102,9 +107,17 @@ if NB == 0
 
 
 elseif NB == 1
-    theta = exp(-Xnb*b(NVarA+1:NVarA+NVarNB));
     fit = Xa*b(1:NVarA);
-    fit2 = Xnb*b(NVarA+1:NVarA+NVarNB);
+    % fit2 is -log(theta) throughout, which is what lets the two parameterisations
+    % share every branch below:
+    %   NB2  Var = lambda + alpha*lambda^2   theta = 1/alpha
+    %   NB1  Var = lambda*(1+alpha)          theta = lambda/alpha
+    if NBtype == 1
+        fit2 = Xnb*b(NVarA+1:NVarA+NVarNB) - fit;
+    else
+        fit2 = Xnb*b(NVarA+1:NVarA+NVarNB);
+    end
+    theta = exp(-fit2);
 
     if Censored ==0
         if Truncated == 0
@@ -308,30 +321,32 @@ if nargout == 2
 %         if Truncated == 0
             %derivative with respect to beta
             g = Xa.*Y - (Y + theta) .* Lam.*Xa./(theta+Lam) ;
-            %derivative with respect to beta nb
-            txnb = theta.*Xnb; % d(theta)/d(b)*(-1)
-            fit2 = Xnb*b(NVarA+1:NVarA+NVarNB); 
-            gnb  = -psi(theta+Y) + psi(theta)-1 + fit2 + log(theta+Lam) + (theta+Y)./(theta+Lam); %gnb*(-1)/txnb
-            gnb  = txnb.*gnb;
+            % dnb collects everything that reaches the likelihood through theta.
+            % The gamma-gradient is dnb.*Xnb because d(log theta)/d(gamma) = -Xnb;
+            % under NB1 the same channel is open to beta, where d(log theta)/d(beta) = Xa.
+            dnb  = theta.*(-psi(theta+Y) + psi(theta)-1 + fit2 + log(theta+Lam) + (theta+Y)./(theta+Lam));
 
             if Truncated == 2
                 g = g - Xa;
-    
+
             elseif Truncated ==1
-       
+
                 gtmp = (ThetaLam.^(theta+1))./(-expm1(theta.*log(ThetaLam)));
                 gtmp = gtmp.*Xa.*Lam;
                 g = g - gtmp;
-    
-                gtmp = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
-                gtmp = gtmp./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
-                gtmp = gtmp.*Xnb.*theta;
-                gnb = gnb - gtmp;
+
+                dtr = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
+                dtr = dtr./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
+                dnb = dnb - dtr.*theta;
+            end
+            gnb = dnb.*Xnb;
+
+            if NBtype == 1
+                g = g - dnb.*Xa;
             end
 
         else % Censored >0
             txnb = theta.*Xnb;
-            fit2 = Xnb*b(NVarA+1:NVarA+NVarNB);
 
             % NB pmf at the censored cell, for k = 0 ... Censored-1. Everything goes
             % through gammaln: gamma(theta) overflows to Inf for theta > 171, which is

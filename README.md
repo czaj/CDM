@@ -5,9 +5,9 @@ This is a package of Matlab scripts and functions that allow for the estimation 
 
 This package includes the following models:
 - Poisson regression
-- Negative Binomial regression (NB2)
-- Zero-inflated Poisson (ZIP)
-- Zero-inflated Negative Binomial (ZINB)
+- Negative Binomial regression, NB2 (variance λ + αλ²) and NB1 (variance λ(1+α))
+- Zero-inflated Poisson (ZIP) and Negative Binomial (ZINB)
+- Hurdle models: a binary participation equation plus a zero-truncated count
 
 Each of them can be combined with:
 - zero truncation (on-site samples, where non-visitors are unobserved)
@@ -64,7 +64,7 @@ Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
 | `INPUT.Y` | counts (non-negative integers), `NCT*NP` rows |
 | `INPUT.Xa` | explanatory variables of the count equation — include your own constant |
 | `INPUT.Xnb` | optional covariates of overdispersion; a constant is prepended automatically |
-| `INPUT.Xzinf` | covariates of the zero-inflation equation — include your own constant |
+| `INPUT.Xzinf` | optional covariates of the zero-inflation equation; a constant is prepended automatically |
 | `INPUT.W` | optional weights, one per respondent or one per observation |
 | `INPUT.MissingInd` | optional 0/1 indicator; flagged observations are removed |
 
@@ -77,6 +77,7 @@ Set these in `EstimOpt` before calling `DataCleanCDM`.
 | `NP` | number of respondents |
 | `NCT` | observations per respondent (1 for a cross-section) |
 | `NB` | 0 = Poisson (default), 1 = Negative Binomial |
+| `NBtype` | 2 = NB2, variance λ + αλ² (default); 1 = NB1, variance λ(1+α) |
 | `Zinf` | 1 for a zero-inflated model (requires `INPUT.Xzinf`) |
 | `probit` | 1 to use a probit rather than a logit inflation equation |
 | `Truncated` | 0 = none (default), 1 = zero truncation, 2 = zero truncation with endogenous stratification |
@@ -117,6 +118,43 @@ These are shared with the [`DCE`](https://github.com/czaj/DCE) package and behav
 | `R_out` | the formatted output table, as written to `.xls` |
 
 Note that the intercept of the overdispersion equation is reported without significance stars: H<sub>0</sub>: ln α = 0 is not the Poisson boundary, so the usual test does not answer the question people expect it to. Covariates of overdispersion are reported with ordinary tests.
+
+## Hurdle models
+
+`CDM_hurdle` estimates a two-part model: a binary equation for whether the respondent participates at all, and a zero-truncated count for how many trips a participant takes.
+
+```matlab
+INPUT.Xh = [];               % participation covariates; defaults to Xa
+EstimOpt.NamesH = {'Travel cost';'Income'};
+Results.Hurdle = CDM_hurdle(INPUT,Results,EstimOpt,OptimOpt);
+```
+
+For recreation demand this is usually better motivated than zero inflation: not going at all is a different decision from deciding how often to go, rather than a hidden class. The log-likelihood separates,
+
+```
+LL = sum_{y=0} log(1-P) + sum_{y>0} [ log(P) + log f(y | y>0) ]
+```
+
+and the two parts share no parameters, so each is maximised on its own and the information matrix is block diagonal. The result is shaped like any other CDM result — the participation equation is stored in the zero-inflation slot, so `CDM_post` and `CDM_compare` work on it unchanged, and expected trips come out as P·E[Y|Y>0].
+
+## Travel cost
+
+`TravelCost` builds the travel cost variable. The money part is uncontroversial; the value of travel time is not, which is why the rule is an explicit choice and why the default returns a whole sensitivity panel rather than one number.
+
+```matlab
+Trip = struct('Distance',dist,'CostPerKm',0.35,'Time',dist/70,'Wage',wage);
+[TC,D] = TravelCost(Trip);              % columns for 0, 1/4, 1/3 and 1/2 of the wage
+INPUT.Xa = [ones(n,1), TC(:,3), inc];   % 1/3 of the wage
+```
+
+| `Opt.TimeRule` | what it does |
+| --- | --- |
+| `'fraction'` | a fraction of the wage — one column per value in `Opt.TimeFraction`, default `[0 1/4 1/3 1/2]` |
+| `'full'` | the full wage rate |
+| `'full_or_zero'` | the full wage for respondents who would have preferred a shorter trip, nothing for those who would not. Needs `Trip.ValuesTime`. Travel that someone would not shorten is not time given up, so charging them for it overstates the price they faced |
+| `'none'` | money cost only |
+
+Distance and time are doubled unless `Trip.RoundTrip = 1`. `Trip.OnSiteTime` is valued by the same rule.
 
 ## Post-estimation
 

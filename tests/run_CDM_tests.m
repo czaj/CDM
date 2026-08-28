@@ -9,7 +9,7 @@ function nFail = run_CDM_tests
 
 cdm_test_paths;
 
-tests = {@test_CDM_gradients,@test_CDM_options,@test_CDM_recovery,@test_CDM_post};
+tests = {@test_CDM_gradients,@test_CDM_options,@test_CDM_recovery,@test_CDM_post,@test_CDM_models};
 nFail = 0;
 
 for i = 1:numel(tests)

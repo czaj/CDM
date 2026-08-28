@@ -11,9 +11,17 @@ end
 cdm_test_paths;
 
 % Open issues - reported as KNOWN, do not fail the suite.
-% {NB, Zinf, Truncated, Censored, audit id, note}
-% Empty: every combination on the grid currently matches the numerical gradient.
-KNOWN = cell(0,6);
+% {NB, NBtype, Zinf, Truncated, Censored, id, note}
+% Under NB1 the dispersion parameter moves with lambda, so beta reaches the
+% censored cell through theta = lambda/alpha as well. That term is not derived;
+% CDM detects the combination and switches to a numerical gradient, so the models
+% still estimate correctly - only the analytical gradient is missing here.
+nb1cens = 'NB1+cens';
+nb1note = 'analytical gradient not derived - CDM switches to EstimOpt.NumGrad = 1';
+KNOWN = {1,1,0,0,6,nb1cens,nb1note
+         1,1,0,1,6,nb1cens,nb1note
+         1,1,0,2,6,nb1cens,nb1note
+         1,1,1,0,6,nb1cens,nb1note};
 
 n = 2000;
 NVarA = 3;
@@ -24,11 +32,12 @@ nKnown = 0;
 nPass = 0;
 
 if verbose
-    fprintf('%-6s %-5s %-4s %-4s %-5s %13s %12s   %s\n', ...
-        'NB','Zinf','Trun','Cens','RMin','max rel. err','sum LL','status');
+    fprintf('%-4s %-5s %-5s %-4s %-4s %-5s %13s %12s   %s\n', ...
+        'NB','type','Zinf','Trun','Cens','RMin','max rel. err','sum LL','status');
 end
 
-for NB = [0 1]
+for NBpair = [0 2; 1 2; 1 1]' % NB and NBtype; NBtype is irrelevant for Poisson
+    NB = NBpair(1); NBtype = NBpair(2);
     for Zinf = [0 1]
         for Truncated = [0 1 2]
             for Censored = [0 6]
@@ -46,13 +55,18 @@ for NB = [0 1]
                     Lam = exp(Xa*beta);
 
                     EstimOpt = struct('NB',NB,'Zinf',Zinf,'Truncated',Truncated, ...
-                        'Censored',Censored,'NVarA',NVarA,'RealMin',RealMin);
+                        'Censored',Censored,'NVarA',NVarA,'RealMin',RealMin,'NBtype',NBtype);
 
                     b = beta;
                     if NB == 1
                         Xnb = ones(n,1);
                         b = [b;0.2];
-                        Y = nbinrnd(2,2./(2+Lam));
+                        if NBtype == 1
+                            th = Lam/0.8; % NB1: theta = lambda/alpha
+                        else
+                            th = 2*ones(n,1); % NB2: theta constant
+                        end
+                        Y = nbinrnd(th,th./(th+Lam));
                     else
                         Xnb = zeros(n,0);
                         Y = poissrnd(Lam);
@@ -75,7 +89,7 @@ for NB = [0 1]
                         Y = min(Y,Censored);
                     end
 
-                    [isKnown,auditId,note] = lookupKnown(KNOWN,NB,Zinf,Truncated,Censored);
+                    [isKnown,auditId,note] = lookupKnown(KNOWN,NB,NBtype,Zinf,Truncated,Censored);
                     status = 'ok';
                     relErr = NaN;
                     sumLL = NaN;
@@ -118,8 +132,8 @@ for NB = [0 1]
                     end
 
                     if verbose
-                        fprintf('%-6d %-5d %-4d %-4d %-5d %13.3e %12.4f   %s\n', ...
-                            NB,Zinf,Truncated,Censored,RealMin,relErr,sumLL,status);
+                        fprintf('%-4d %-5d %-5d %-4d %-4d %-5d %13.3e %12.4f   %s\n', ...
+                            NB,NBtype,Zinf,Truncated,Censored,RealMin,relErr,sumLL,status);
                         if isKnown && contains(status,'KNOWN')
                             fprintf('%56s %s\n','',note);
                         end
@@ -140,15 +154,16 @@ end
 end
 
 
-function [isKnown,auditId,note] = lookupKnown(KNOWN,NB,Zinf,Truncated,Censored)
+function [isKnown,auditId,note] = lookupKnown(KNOWN,NB,NBtype,Zinf,Truncated,Censored)
 isKnown = false;
 auditId = '';
 note = '';
 for i = 1:size(KNOWN,1)
-    if KNOWN{i,1} == NB && KNOWN{i,2} == Zinf && KNOWN{i,3} == Truncated && KNOWN{i,4} == Censored
+    if KNOWN{i,1} == NB && KNOWN{i,2} == NBtype && KNOWN{i,3} == Zinf && ...
+            KNOWN{i,4} == Truncated && KNOWN{i,5} == Censored
         isKnown = true;
-        auditId = KNOWN{i,5};
-        note = KNOWN{i,6};
+        auditId = KNOWN{i,6};
+        note = KNOWN{i,7};
         return
     end
 end

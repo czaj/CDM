@@ -1,8 +1,15 @@
 % function [LL,g,h]= LL_CDM_MATlike(Y,Xa,Xnb,W,EstimOpt,OptimOpt,b0)
 function [LL,g,h]= LL_CDM_MATlike(Y,Xa,Xnb,Xzinf,W,EstimOpt,OptimOpt,b0)
+% LL_CDM_MATlike wraps LL_CDM for fminunc/fmincon: it sums the weighted
+% log-likelihood and, when asked, returns the gradient and a BHHH Hessian.
+%
+% See also CDM, LL_CDM
+%
+% Author: Mikolaj Czajkowski, Professor
+% University of Warsaw, Faculty of Economic Sciences
+% email address: mik@czaj.org
+% Website: http://czaj.org/#
 
-% LLfun = @(B) LL_CDM(Y,Xa,Xnb, EstimOpt,B);
-%powinno być
 LLfun = @(B) LL_CDM(Y,Xa,Xnb, Xzinf, EstimOpt,B);
 
 

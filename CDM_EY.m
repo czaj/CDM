@@ -25,7 +25,11 @@ NVarA = EstimOpt.NVarA;
 Lam = exp(Xa*b(1:NVarA));
 
 if EstimOpt.NB == 1
-    theta = exp(-Xnb*b(NVarA+1:NVarA+EstimOpt.NVarNB));
+    if isfield(EstimOpt,'NBtype') && EstimOpt.NBtype == 1
+        theta = Lam./exp(Xnb*b(NVarA+1:NVarA+EstimOpt.NVarNB)); % NB1: theta = lambda/alpha
+    else
+        theta = exp(-Xnb*b(NVarA+1:NVarA+EstimOpt.NVarNB));     % NB2: theta = 1/alpha
+    end
 else
     theta = [];
 end
