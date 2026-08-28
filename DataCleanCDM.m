@@ -99,24 +99,6 @@ EstimOpt.NVarA = size(INPUT.Xa,2); % Number of attributes
 
 %EstimOpt.NVarZinf = size(INPUT.Xzinf,2);
 
-if isfield(EstimOpt,'HaltonSkip') == 0
-    EstimOpt.HaltonSkip = 1; % specify no of rows in halton sequence to skip (default=1)
-end
-if isfield(EstimOpt,'HaltonLeap') == 0
-    EstimOpt.HaltonLeap = 0; % specify no of rows in halton sequence to leap (default=0)
-end
-
-if isfield(EstimOpt,'Draws') == 0
-    EstimOpt.Draws = 6; % specify draws type (default = Sobol with scrambling)
-end
-
-if isfield(EstimOpt,'NRep') == 0
-    EstimOpt.NRep = 1e3; % specify no. of draws
-end
-
-EstimOpt.Seed1 = 179424673;
-EstimOpt.Seed2 = 7521436817;
-
 if isfield(EstimOpt,'ConstVarActive') == 0
     EstimOpt.ConstVarActive = 0;
 end
@@ -139,9 +121,6 @@ end
 if isfield(EstimOpt,'RealMin') == 0 || (EstimOpt.RealMin ~= 0 && EstimOpt.RealMin ~= 1)
     EstimOpt.RealMin = 0;
 end
-
-EstimOpt.NSdSim = 1e4; % number of draws for simulating standard deviations
-
 
 %% OptimOpt
 
@@ -181,7 +160,7 @@ OptimOpt.MaxFunEvals = 1e5*size(INPUT.Xa,2); %Maximum number of function evaluat
 OptimOpt.OutputFcn = @outputf;
 
 
-%% Estimate constants-only Poisson model:
+%% Estimate the constants-only model (same family as the model being estimated):
 
 INPUT_0.Y = INPUT.Y;
 INPUT_0.Xa = ones(size(INPUT.Y,1),1); % NCT*NP no longer holds once incomplete observations are removed
@@ -200,4 +179,4 @@ OptimOpt_0.Hessian = 'off';
 OptimOpt_0.Display = 'off';
 OptimOpt_0.FunValCheck= 'off';
 OptimOpt_0.Diagnostics = 'off';
-Results.POISS0 = CDM(INPUT_0,[],EstimOpt_0,OptimOpt_0);
+Results.CDM0 = CDM(INPUT_0,[],EstimOpt_0,OptimOpt_0);

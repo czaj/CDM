@@ -48,7 +48,8 @@ EstimOpt.Zinf = 0;
 EstimOpt.Truncated = 0;
 EstimOpt.Censored = 0;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.POISS = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 
@@ -60,7 +61,8 @@ theta = 2;
 INPUT.Y = nbinrnd(theta,theta./(theta+Lam));
 EstimOpt.NB = 1;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 
@@ -75,7 +77,8 @@ INPUT.Xnb = INPUT.Xa(:,3);
 EstimOpt.NB = 1;
 EstimOpt.NamesNB = {'Income'};
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.NB_Xnb = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 INPUT = rmfield(INPUT,'Xnb');
@@ -95,7 +98,8 @@ INPUT.Y = Y;
 EstimOpt.NB = 0;
 EstimOpt.Truncated = 1;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.ZTP = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 
@@ -107,7 +111,8 @@ B_backup = [];
 INPUT.Y = poissrnd(Lam) + 1;
 EstimOpt.Truncated = 2;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.ZTP_ES = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 EstimOpt.Truncated = 0;
@@ -121,7 +126,8 @@ B_backup = [];
 INPUT.Y = poissrnd(Lam);
 EstimOpt.Censored = 10;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.POISS_cens = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 EstimOpt.Censored = 0;
@@ -141,7 +147,8 @@ EstimOpt.NB = 0;
 EstimOpt.Zinf = 1;
 EstimOpt.NamesZinf = {'Zvar'};
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.ZIP = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 
@@ -152,7 +159,8 @@ theta = 2;
 INPUT.Y = nbinrnd(theta,theta./(theta+Lam)).*binornd(1,1-q);
 EstimOpt.NB = 1;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.ZINB = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 INPUT = rmfield(INPUT,'Xzinf');
@@ -168,7 +176,8 @@ INPUT.Y = poissrnd(Lam);
 INPUT.W = unifrnd(0.5,1.5,n,1);
 EstimOpt.NB = 0;
 
-[INPUT,Results,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
 Results.POISS_W = CDM(INPUT,Results,EstimOpt,OptimOpt);
 
 INPUT = rmfield(INPUT,'W');

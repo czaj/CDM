@@ -13,7 +13,7 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %    result. They are set by default based on the EstimOpt provided to
 %    DataCleanCDM, however, they are subject to change.
 %    Results_old - old results, used for starting values and for the LL of the
-%    constants-only model (Results.POISS0, produced by DataCleanCDM)
+%    constants-only model (Results.CDM0, produced by DataCleanCDM)
 %
 % INPUT data:
 %    Y - counts (non-negative integers), NCT*NP rows
@@ -179,6 +179,18 @@ if isfield(EstimOpt,'Censored') == 0|| EstimOpt.Censored < 1
     EstimOpt.Censored = 0;
 end
 
+if EstimOpt.Zinf == 1
+    if EstimOpt.NB == 0
+        ModelTag = 'ZIP';
+    else
+        ModelTag = 'ZINB';
+    end
+elseif EstimOpt.NB == 0
+    ModelTag = 'POISS';
+else
+    ModelTag = 'NB';
+end
+
 if isfield(EstimOpt,'HessEstFix') && EstimOpt.HessEstFix == 4 % analytical Hessian not derived for count data models yet
     if EstimOpt.Display == 1
         cprintf(rgb('DarkOrange'), 'WARNING: Analytical Hessian not available for count data models - using numerical Hessian instead (EstimOpt.HessEstFix = 3) \n')
@@ -268,18 +280,18 @@ if exist('B_backup','var') && ~isempty(B_backup) && size(B_backup,1) == EstimOpt
     if EstimOpt.Display == 1
         disp('Using the starting values from Backup')
     end
-elseif isfield(Results_old,'POISS') && isfield(Results_old.POISS,'b0') % starting values provided
-
-    Results_old.POISS.b0_old = Results_old.POISS.b0;
-    Results_old.POISS = rmfield(Results_old.POISS,'b0');
-    if length(Results_old.POISS.b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
+elseif isfield(Results_old,ModelTag) && isfield(Results_old.(ModelTag),'b0') % starting values provided
+    b0source = ModelTag;
+    Results_old.(b0source).b0_old = Results_old.(b0source).b0;
+    Results_old.(b0source) = rmfield(Results_old.(b0source),'b0');
+    if length(Results_old.(b0source).b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
        if EstimOpt.Display == 1
             disp('WARNING: Incorrect no. of starting values or model specification')
-            disp('Number of values in Results_old.POISS.b0_old different from number of parameters for estimation')
+            disp(['Number of values in Results_old.',b0source,'.b0_old different from number of parameters for estimation'])
        end
-       Results_old.POISS = rmfield(Results_old.POISS,'b0_old');
+       Results_old.(b0source) = rmfield(Results_old.(b0source),'b0_old');
     else
-        b0 = Results_old.POISS.b0_old(:);
+        b0 = Results_old.(b0source).b0_old(:);
     end
 end
 
@@ -288,7 +300,7 @@ if  ~exist('b0','var')
     if EstimOpt.Display == 1
         disp('Using linear regression estimates as starting values')
     end
-    b0 = regress(log(INPUT.Y+0.1), INPUT.Xa);
+    b0 = INPUT.Xa\log(INPUT.Y+0.5); % OLS on log(Y+0.5), no Statistics Toolbox needed
 
     if EstimOpt.NVarNB > 0 % intercept plus any covariates of overdispersion
         b0 = [b0; zeros(EstimOpt.NVarNB,1)];
@@ -403,7 +415,7 @@ LLfun = @(B) LL_CDM_MATlike(INPUT.Y, INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,INPUT.W, Est
 if EstimOpt.ConstVarActive == 0 
     
     if EstimOpt.HessEstFix == 0 %optimization hessian used
-        [Results.bhat, LL, Results.exitf, Results.output, Results.g, Results.hess] = fminunc(LLfun, b0, OptimOpt); %tu się dzieje coś dziwnego z b0, dlaczego w kolejnych iteracjach std. err maleje?
+        [Results.bhat, LL, Results.exitf, Results.output, Results.g, Results.hess] = fminunc(LLfun, b0, OptimOpt);
     else
         [Results.bhat, LL, Results.exitf, Results.output, Results.g] = fminunc(LLfun, b0, OptimOpt);
     end  
@@ -427,14 +439,16 @@ end
 Results.LL = -LL;
 Results.b0_old = b0;
 
+% LL_CDM returns the negative log-likelihood per observation; store the weighted
+% log-likelihood, which is what the LL reported above is the sum of.
+Results.LLdetailed = -INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
 
 if EstimOpt.HessEstFix == 1
-	f = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
-    Results.jacobian = numdiff(@(B) LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf, EstimOpt,B),f,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
+    Results.jacobian = numdiff(@(B) INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),-Results.LLdetailed,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
 elseif EstimOpt.HessEstFix == 2
-    Results.jacobian = jacobianest(@(B) LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.bhat);
+    Results.jacobian = jacobianest(@(B) INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.bhat);
 elseif EstimOpt.HessEstFix == 3
-    Results.hess = hessian(@(B) sum(LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),1), Results.bhat);
+    Results.hess = hessian(@(B) sum(INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),1), Results.bhat);
 end
 
 
@@ -445,7 +459,7 @@ if sum(EstimOpt.BActive == 0) > 0
     elseif EstimOpt.HessEstFix == 0 || EstimOpt.HessEstFix == 3
         Results.hess = Results.hess(EstimOpt.BActive == 1,EstimOpt.BActive == 1);
     end
-    Results.ihess = inv(Results.hess);
+    [Results.ihess, Results.HessDiagnostics] = hessianInverse(Results.hess,ModelTag);
     Results.ihess = direcXpnd(Results.ihess,EstimOpt.BActive);
     Results.ihess = direcXpnd(Results.ihess',EstimOpt.BActive);
     
@@ -453,7 +467,7 @@ else
     if EstimOpt.HessEstFix == 1 || EstimOpt.HessEstFix == 2
         Results.hess = Results.jacobian'*Results.jacobian;
     end
-    Results.ihess = inv(Results.hess);
+    [Results.ihess, Results.HessDiagnostics] = hessianInverse(Results.hess,ModelTag);
 end
 
 
@@ -462,8 +476,7 @@ if EstimOpt.RobustStd == 1
         [~, Results.jacobian] = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
         Results.jacobian = Results.jacobian.*INPUT.W(:, ones(1,size(Results.jacobian,2)));
     else
-        Results.LLdetailed = LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,Results.bhat);
-        Results.jacobian = numdiff(@(B) INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),Results.LLdetailed,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
+        Results.jacobian = numdiff(@(B) INPUT.W.*LL_CDM(INPUT.Y,INPUT.Xa,INPUT.Xnb,INPUT.Xzinf,EstimOpt,B),-Results.LLdetailed,Results.bhat,isequal(OptimOpt.FinDiffType, 'central'),EstimOpt.BActive);
     end
     RobJacob = zeros(EstimOpt.NP, size(Results.jacobian,2));
     RobJacob(1,:) = sum(Results.jacobian(1:EstimOpt.NCTMiss(1),:),1);
@@ -487,11 +500,19 @@ if isfield(EstimOpt,'BActive')
     EstimOpt.Params = EstimOpt.Params - sum(EstimOpt.BActive == 0);
 end
 
-if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
-    Results.stats = [Results.LL; Results_old.POISS0.LL;  1-Results.LL/Results_old.POISS0.LL; NaN; ((2*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs; ((log(EstimOpt.NObs)*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs ;EstimOpt.NObs; EstimOpt.NP; EstimOpt.Params];
-
+if isfield(Results_old,'CDM0') && isfield(Results_old.CDM0,'LL')
+    LL0 = Results_old.CDM0.LL;
+elseif isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL') % pre-2026 field name
+    LL0 = Results_old.POISS0.LL;
 else
-    Results.stats = NaN(9,1);
+    LL0 = [];
+end
+
+if ~isempty(LL0)
+    % slot 4 is Ben-Akiva-Lerman's pseudo-R2, which is not defined for count models
+    Results.stats = [Results.LL; LL0; 1-Results.LL/LL0; NaN; ((2*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs; ((log(EstimOpt.NObs)*EstimOpt.Params-2*Results.LL))/EstimOpt.NObs; EstimOpt.NObs; EstimOpt.NP; EstimOpt.Params];
+else
+    Results.stats = [];
 end
 
 Results.INPUT = INPUT;
@@ -514,7 +535,7 @@ if EstimOpt.Zinf == 1
     Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf))] ;
 end
 
-if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+if EstimOpt.TC_par_index <= EstimOpt.NVarA
     Results.DetailsCS = zeros(1,4);
     Results.DetailsCS(:,[1 3 4]) = [-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)), pv(-1/Results.DetailsA(TC_par_index,1), sqrt(Results.ihess(TC_par_index,TC_par_index)*((-1./Results.DetailsA(TC_par_index,1))^4)))];
 end
@@ -547,7 +568,7 @@ if EstimOpt.NVarZinf > 0
     ST = [ST,{'DetailsZinf'}];
 end
 
-if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
+if isfield(Results,'DetailsCS')
     Template1 = [Template1;{'DetailsCS'}];
     Template2 = [Template2;{'DetailsCS'}];
     Names.DetailsCS = cellstr(strcat('-1/(', EstimOpt.NamesA(TC_par_index),')'));
@@ -594,31 +615,34 @@ end
 
 %% Footer
 
-Tail = cell(26,4);
+% Rows 1-16 follow the layout genOutput expects (as in MNL.m); the descriptive
+% statistics table is appended below it, in the extra columns.
+Tail = cell(16,2);
 Tail(2,1) = {'Model diagnostics'};
-Tail(3:15,1) = {'LL at convergence';'LL at constant(s) only';strcat('McFadden''s pseudo-R',char(178));'AIC/n';'BIC/n';'n (observations)';'r (respondents)';'k (parameters)';' ';'Estimation method';'Optimization method';'Gradient';'Hessian'};
+Tail(3:16,1) = {'LL at convergence';'LL at constant(s) only';strcat('McFadden''s pseudo-R',char(178));strcat('Ben-Akiva-Lerman''s pseudo-R',char(178));'AIC/n';'BIC/n';'n (observations)';'r (respondents)';'k (parameters)';' ';'Estimation method';'Optimization method';'Gradient';'Hessian'};
 
-if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
-    Tail(3:10,2) = num2cell(Results.stats([1:3,5:9]));
+if ~isempty(Results.stats)
+    Tail(3:11,2) = num2cell(Results.stats);
+    Tail(6,2) = {[]}; % Ben-Akiva-Lerman's pseudo-R2 is not defined for count models
 end
 
 
 if any(INPUT.W ~= 1)
-    Tail(12,2) = {'weighted maximum likelihood'};
+    Tail(13,2) = {'weighted maximum likelihood'};
 else
-    Tail(12,2) = {'maximum likelihood'};
+    Tail(13,2) = {'maximum likelihood'};
 end
 
-Tail(13,2) = {OptimOpt.Algorithm;};
+Tail(14,2) = {OptimOpt.Algorithm;};
 
 if strcmp(OptimOpt.GradObj,'on')
     if EstimOpt.NumGrad == 0
-        Tail(14,2) = {'user-supplied, analytical'};
+        Tail(15,2) = {'user-supplied, analytical'};
     else
-        Tail(14,2) = {['user-supplied, numerical ',num2str(OptimOpt.FinDiffType)]};
+        Tail(15,2) = {['user-supplied, numerical ',num2str(OptimOpt.FinDiffType)]};
     end
 else
-    Tail(14,2) = {['built-in, ',num2str(OptimOpt.FinDiffType)]};
+    Tail(15,2) = {['built-in, ',num2str(OptimOpt.FinDiffType)]};
 end
 
 if isequal(OptimOpt.Algorithm,'quasi-newton')
@@ -659,23 +683,38 @@ else
     end
 end
 
-Tail(15,2) = {outHessian};
+Tail(16,2) = {outHessian};
 
-Tail(17,1) = {'Descriptive Statistics'};
-
-if isfield(Results_old,'POISS0') && isfield(Results_old.POISS0,'LL')
-    Tail(18,1:3) = {'var','Y',char(EstimOpt.NamesA(TC_par_index))};
+if EstimOpt.TC_par_index <= EstimOpt.NVarA % widens Tail to 3 columns
+    Tail(18,1) = {'Descriptive statistics'};
+    Tail(19,1:3) = {'var','Y',char(EstimOpt.NamesA(TC_par_index))};
     desc_y = dstats(INPUT.Y);
     desc_tc = dstats(INPUT.Xa(:,TC_par_index));
-    desc = [desc_y(1:7,:),desc_tc(1:7,2)];
-    Tail(20:26,1:3) = desc;
+    Tail(20:26,1:3) = [desc_y(1:7,:),desc_tc(1:7,2)];
 end
 
 %%  Print to screen and .xls
 
 if EstimOpt.Display ~= 0
     Results.Dist = -ones(EstimOpt.NVarA,1);
-    Results.R_out = genOutput_CDM(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
-
+    if ~isfield(EstimOpt,'OutputFilePrefix') || isempty(EstimOpt.OutputFilePrefix)
+        % Head{1,1} is a sentence ('Zero-inflated Negative Binomial'); the saved file
+        % gets a short tag instead, in line with MNL_results_*.xls in DCE.
+        if isfield(EstimOpt,'ProjectName') && ~isempty(EstimOpt.ProjectName)
+            EstimOpt.OutputFilePrefix = [ModelTag,'_results_',char(string(EstimOpt.ProjectName))];
+        else
+            EstimOpt.OutputFilePrefix = [ModelTag,'_results'];
+        end
+    end
+    if EstimOpt.NB == 1
+        % H0: ln(alpha) = 0 is not the Poisson boundary, so the intercept of the
+        % overdispersion equation carries no stars. Its covariates are ordinary tests.
+        if EstimOpt.NVarNB == 1
+            EstimOpt.NoSigRows.DetailsNB = Inf; % the block is the intercept alone
+        else
+            EstimOpt.NoSigRows.DetailsNB = 1;
+        end
+    end
+    Results.R_out = genOutput(EstimOpt,Results,Head,Tail,Names,Template1,Template2,Heads,ST);
 end
 end

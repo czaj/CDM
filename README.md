@@ -22,7 +22,7 @@ The models are estimated using the maximum likelihood method. Consumer surplus p
 
 ## Getting started
 
-Add the `CDM` and [`Tools`](https://github.com/czaj/Tools) folders to your Matlab path. `Tools` is required — it provides the output formatting, numerical differentiation and helper functions shared with the [`DCE`](https://github.com/czaj/DCE) package.
+Add the `CDM` and [`Tools`](https://github.com/czaj/Tools) folders to your Matlab path. **`Tools` is a hard dependency** — CDM carries no output code of its own, so the printed tables, the `.xls` export, the numerical differentiation and the Hessian diagnostics all come from `Tools`, exactly as in the [`DCE`](https://github.com/czaj/DCE) package.
 
 ```matlab
 addpath('...\CDM')
@@ -47,7 +47,15 @@ EstimOpt.TC_par_index = 2;     % which parameter of Xa is the travel cost
 Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
 ```
 
-`DataCleanCDM` fills in the estimation defaults, handles weights and missing data, and estimates the constants-only model used for McFadden's pseudo-R². `CDM` estimates the model you specified and prints the results (also saving them to an `.xls` file).
+`DataCleanCDM` fills in the estimation defaults, handles weights and missing data, and estimates the constants-only model (returned as `Results.CDM0`) whose log-likelihood gives McFadden's pseudo-R². `CDM` estimates the model you specified, prints the results and saves them to an `.xls` file named after the model — `NB_results_demo.xls`, `ZINB_results_demo.xls` and so on.
+
+Note that `DataCleanCDM` returns a fresh `Results`, so when you estimate several models in one script keep your own accumulator:
+
+```matlab
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0;
+Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
+```
 
 ## Data
 
@@ -102,7 +110,9 @@ These are shared with the [`DCE`](https://github.com/czaj/DCE) package and behav
 | `DetailsNB` | the overdispersion equation (NB only) |
 | `DetailsZinf` | the zero-inflation equation (ZIP/ZINB only) |
 | `DetailsCS` | consumer surplus per trip, −1/β<sub>tc</sub>, with a delta-method standard error |
-| `stats` | LL, LL of the constants-only model, McFadden's pseudo-R², AIC/n, BIC/n, n, r, k |
+| `stats` | LL, LL of the constants-only model, McFadden's pseudo-R², (unused), AIC/n, BIC/n, n, r, k |
+| `LLdetailed` | weighted log-likelihood per observation |
+| `HessDiagnostics` | rank, condition number and inversion method of the Hessian |
 | `LL`, `hess`, `ihess` | log-likelihood and the (inverse) Hessian |
 | `R_out` | the formatted output table, as written to `.xls` |
 

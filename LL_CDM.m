@@ -41,7 +41,7 @@ if NB == 0
             vec = 0:(Censored - 1);
             vec = vec(ones(length(clam),1),:);
             fitc = fitc(:,ones(Censored,1));
-            ftmp = 1 - sum(exp(vec.*fitc - clam - gammaln(vec+1)),2);
+            ftmp = gammainc(clam,Censored,'lower'); % = 1 - sum_{k<C} Poisson(k)
 
             if RealMin == 0
                 f(Y == Censored) = log(ftmp);
@@ -60,7 +60,7 @@ if NB == 0
 
             fitc = cXa*b(1:NVarA);
             fitc = fitc(:,ones(Censored-1,1));
-            ftmp = 1 - sum(exp( vec.*fitc - clam - gammaln(vec+1)),2);
+            ftmp = gammainc(clam,Censored-1,'lower'); % Y-1 is Poisson under stratification
 
             if RealMin == 0
                 f(Y == Censored) = log(ftmp);
@@ -76,7 +76,7 @@ if NB == 0
             vec = 0:(Censored - 1);
             vec = vec(ones(length(clam),1),:);
             fitc = fitc(:,ones(Censored,1));
-            ftmp = (1 - sum(exp(vec.*fitc - clam - gammaln(vec+1)),2));
+            ftmp = gammainc(clam,Censored,'lower');
 
             if RealMin == 0
                 f(Y == Censored) = log(ftmp) - log(-expm1(-clam));
