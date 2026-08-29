@@ -1,6 +1,7 @@
 function nFail = test_CDM_gradients(verbose)
 % test_CDM_gradients compares the analytical gradient of LL_CDM against central
-% differences over the full grid of NB x Zinf x Truncated x Censored x RealMin.
+% differences over the full grid of NB x NBtype x Zinf x Truncated x Censored x
+% RealMin, where NBtype is 2 (NB2), 1 (NB1) or 3 (NB-P).
 %
 % Returns the number of unexpected failures. Combinations listed in KNOWN below
 % are reported but not counted - they document open issues in the audit.
@@ -12,16 +13,9 @@ cdm_test_paths;
 
 % Open issues - reported as KNOWN, do not fail the suite.
 % {NB, NBtype, Zinf, Truncated, Censored, id, note}
-% Under NB1 the dispersion parameter moves with lambda, so beta reaches the
-% censored cell through theta = lambda/alpha as well. That term is not derived;
-% CDM detects the combination and switches to a numerical gradient, so the models
-% still estimate correctly - only the analytical gradient is missing here.
-nb1cens = 'NB1+cens';
-nb1note = 'analytical gradient not derived - CDM switches to EstimOpt.NumGrad = 1';
-KNOWN = {1,1,0,0,6,nb1cens,nb1note
-         1,1,0,1,6,nb1cens,nb1note
-         1,1,0,2,6,nb1cens,nb1note
-         1,1,1,0,6,nb1cens,nb1note};
+% Empty: every combination on the grid matches the numerical gradient, including
+% NB1 and NB-P with censoring.
+KNOWN = cell(0,7);
 
 n = 2000;
 NVarA = 3;
@@ -36,7 +30,7 @@ if verbose
         'NB','type','Zinf','Trun','Cens','RMin','max rel. err','sum LL','status');
 end
 
-for NBpair = [0 2; 1 2; 1 1]' % NB and NBtype; NBtype is irrelevant for Poisson
+for NBpair = [0 2; 1 2; 1 1; 1 3]' % NB and NBtype; NBtype is irrelevant for Poisson
     NB = NBpair(1); NBtype = NBpair(2);
     for Zinf = [0 1]
         for Truncated = [0 1 2]
@@ -61,8 +55,14 @@ for NBpair = [0 2; 1 2; 1 1]' % NB and NBtype; NBtype is irrelevant for Poisson
                     if NB == 1
                         Xnb = ones(n,1);
                         b = [b;0.2];
+                        if NBtype == 3
+                            b = [b;1.5]; % the power P is estimated
+                        end
                         if NBtype == 1
                             th = Lam/0.8; % NB1: theta = lambda/alpha
+                        elseif NBtype == 3
+                            Ptrue = 1.5;
+                            th = Lam.^(2-Ptrue)/0.8; % NB-P: theta = lambda^(2-P)/alpha
                         else
                             th = 2*ones(n,1); % NB2: theta constant
                         end

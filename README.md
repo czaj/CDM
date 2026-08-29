@@ -5,7 +5,7 @@ This is a package of Matlab scripts and functions that allow for the estimation 
 
 This package includes the following models:
 - Poisson regression
-- Negative Binomial regression, NB2 (variance λ + αλ²) and NB1 (variance λ(1+α))
+- Negative Binomial regression: NB2 (variance λ + αλ²), NB1 (variance λ(1+α)) and NB-P (variance λ + αλ^P, with the power estimated)
 - Zero-inflated Poisson (ZIP) and Negative Binomial (ZINB)
 - Hurdle models: a binary participation equation plus a zero-truncated count
 
@@ -18,7 +18,9 @@ Each of them can be combined with:
 - analytical gradients, several Hessian and standard error options (including robust standard errors)
 - equality restrictions on parameters
 
-The models are estimated using the maximum likelihood method. Consumer surplus per trip is reported alongside the coefficients.
+The models are estimated using the maximum likelihood method, with analytical gradients throughout. Consumer surplus per trip is reported alongside the coefficients.
+
+All three Negative Binomial parameterisations are the same likelihood with θ = λ<sup>2−P</sup>/α: NB2 is P = 2, NB1 is P = 1, and NB-P estimates P. Since NB-P nests the other two, it is the honest way to choose between them — but the power is not always well identified, so check its standard error.
 
 ## Getting started
 
@@ -47,7 +49,7 @@ EstimOpt.TC_par_index = 2;     % which parameter of Xa is the travel cost
 Results.NB = CDM(INPUT,Results,EstimOpt,OptimOpt);
 ```
 
-`DataCleanCDM` fills in the estimation defaults, handles weights and missing data, and estimates the constants-only model (returned as `Results.CDM0`) whose log-likelihood gives McFadden's pseudo-R². `CDM` estimates the model you specified, prints the results and saves them to an `.xls` file named after the model — `NB_results_demo.xls`, `ZINB_results_demo.xls` and so on.
+`DataCleanCDM` sets up an `output/` folder next to the calling script, starts a diary of the session there, fills in the estimation defaults, handles weights and missing data, and estimates the constants-only model (returned as `Results.CDM0`) whose log-likelihood gives McFadden's pseudo-R². `CDM` estimates the model you specified, prints the results and saves them to `output/` as an `.xlsx` file named after the model — `NB_results_demo.xlsx`, `ZINB_results_demo.xlsx` and so on. All of that comes from `Tools`, shared with the `DCE` package.
 
 Note that `DataCleanCDM` returns a fresh `Results`, so when you estimate several models in one script keep your own accumulator:
 
@@ -77,7 +79,7 @@ Set these in `EstimOpt` before calling `DataCleanCDM`.
 | `NP` | number of respondents |
 | `NCT` | observations per respondent (1 for a cross-section) |
 | `NB` | 0 = Poisson (default), 1 = Negative Binomial |
-| `NBtype` | 2 = NB2, variance λ + αλ² (default); 1 = NB1, variance λ(1+α) |
+| `NBtype` | 2 = NB2, variance λ + αλ² (default); 1 = NB1, variance λ(1+α); 3 = NB-P, variance λ + αλ^P with `P` estimated |
 | `Zinf` | 1 for a zero-inflated model (requires `INPUT.Xzinf`) |
 | `probit` | 1 to use a probit rather than a logit inflation equation |
 | `Truncated` | 0 = none (default), 1 = zero truncation, 2 = zero truncation with endogenous stratification |

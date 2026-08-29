@@ -105,6 +105,26 @@ EstimOpt.NBtype = 2; % back to the default for the sections below
 EstimOpt.NB = 0;
 
 
+%% Negative Binomial P
+% NB-P estimates the power instead of fixing it, and nests NB1 (P = 1) and
+% NB2 (P = 2). Watch the standard error on P - it is not always well identified.
+
+B_backup = [];
+Ptrue = 1.5;
+theta_nbp = Lam.^(2-Ptrue)/alpha; % NB-P: theta = lambda^(2-P)/alpha
+INPUT.Y = nbinrnd(theta_nbp,theta_nbp./(theta_nbp+Lam));
+EstimOpt.NB = 1;
+EstimOpt.NBtype = 3;
+
+[INPUT,Res0,EstimOpt,OptimOpt] = DataCleanCDM(INPUT,EstimOpt);
+Results.CDM0 = Res0.CDM0; % keep the accumulated models, take only the null model
+Results.NBP = CDM(INPUT,Results,EstimOpt,OptimOpt);
+fprintf('True P: %.2f, estimated: %.3f\n',Ptrue,Results.NBP.bhat(end))
+
+EstimOpt.NBtype = 2; % back to the default for the sections below
+EstimOpt.NB = 0;
+
+
 %% Zero-truncated Poisson (on-site sample)
 % Only visitors are observed, so the sample contains no zeros. The draws are
 % resampled until positive, which is exactly the truncated distribution.
@@ -287,7 +307,7 @@ CDM_compare(Cmp.POISS,Cmp.ZIP);  % Voung: is zero inflation needed?
 % stats = [LL; LL0; McFadden R2; (unused); AIC/n; BIC/n; n; r; k]
 
 fprintf('\n%-28s %12s %10s %10s\n','model','LL','AIC/n','k')
-models = {'POISS','NB','NB1','ZIP','ZINB','Hurdle'};
+models = {'POISS','NB','NB1','NBP','ZIP','ZINB','Hurdle'};
 for i = 1:numel(models)
     if isfield(Results,models{i})
         s = Results.(models{i}).stats;

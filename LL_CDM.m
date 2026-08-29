@@ -13,9 +13,29 @@ NVarNB = EstimOpt.NVarNB;
 NVarZinf = EstimOpt.NVarZinf;
 Censored = EstimOpt.Censored;
 if isfield(EstimOpt,'NBtype') && ~isempty(EstimOpt.NBtype)
-    NBtype = EstimOpt.NBtype; % 2 = NB2 (default), 1 = NB1
+    NBtype = EstimOpt.NBtype; % 2 = NB2 (default), 1 = NB1, 3 = NB-P
 else
     NBtype = 2;
+end
+
+% All three parameterisations are NB2 with theta = lambda^(2-P)/alpha:
+%   NB2   P = 2   Var = lambda + alpha*lambda^2
+%   NB1   P = 1   Var = lambda*(1+alpha)
+%   NB-P  P free  Var = lambda + alpha*lambda^P
+% powerTheta is 2-P, the exponent with which lambda enters theta. It is the only
+% thing that distinguishes them, in the likelihood and in the gradient alike.
+nExtra = 0;
+powerTheta = 0;
+if NB == 1
+    switch NBtype
+        case 1
+            powerTheta = 1;
+        case 3
+            nExtra = 1; % P is estimated, and sits right after the alpha block
+            powerTheta = 2 - b(NVarA+NVarNB+1);
+        otherwise
+            powerTheta = 0;
+    end
 end
 RealMin = EstimOpt.RealMin; 
 
@@ -108,15 +128,9 @@ if NB == 0
 
 elseif NB == 1
     fit = Xa*b(1:NVarA);
-    % fit2 is -log(theta) throughout, which is what lets the two parameterisations
-    % share every branch below:
-    %   NB2  Var = lambda + alpha*lambda^2   theta = 1/alpha
-    %   NB1  Var = lambda*(1+alpha)          theta = lambda/alpha
-    if NBtype == 1
-        fit2 = Xnb*b(NVarA+1:NVarA+NVarNB) - fit;
-    else
-        fit2 = Xnb*b(NVarA+1:NVarA+NVarNB);
-    end
+    % fit2 is -log(theta) throughout, which is what lets all three
+    % parameterisations share every branch below.
+    fit2 = Xnb*b(NVarA+1:NVarA+NVarNB) - powerTheta*fit;
     theta = exp(-fit2);
 
     if Censored ==0
@@ -142,6 +156,14 @@ elseif NB == 1
         vec = 0:(Censored - 1);
         vec = vec(ones(length(cfit),1),:);
 
+        % P(Y >= C) for a Negative Binomial is the regularized incomplete beta.
+        % Computing it directly avoids the cancellation in 1 - sum_k P(k), which
+        % underflows to exactly zero once the censoring point sits far in the tail
+        % and then feeds -Inf to the optimizer.
+        cLam1 = exp(cfit);
+        cTh1 = ctheta;
+        survC = betainc(cLam1./(cTh1+cLam1),Censored,cTh1);
+
         cfit = cfit(:,ones(Censored,1));
         cfit2 = cfit2(:,ones(Censored,1));
         ctheta = ctheta(:,ones(Censored,1));
@@ -154,8 +176,7 @@ elseif NB == 1
 
             %if Y= C
 
-            ftmp = 1 - sum( exp( gammaln(ctheta+vec)- gammaln(ctheta) - gammaln(vec+1)...
-                - ctheta.*cfit2 + vec .* cfit - (ctheta+vec).*log(ctheta+exp(cfit))),2);
+            ftmp = survC;
 
             if RealMin == 0
                 f(iC) = log(ftmp);
@@ -200,8 +221,7 @@ elseif NB == 1
             
 %             cThetaLam = ThetaLam(iC);
             trunc_corr = -expm1(theta(iC).*log(ThetaLam(iC)));
-            ftmp = 1 - sum(exp(gammaln(ctheta+vec)-gammaln(ctheta)-gammaln(vec+1)...
-                -ctheta.*cfit2 + vec.*cfit - (vec+ctheta).*log(ctheta + exp(cfit))),2);
+            ftmp = survC;
            
 %                 vec = 1:(Censored - 1);
 %             vec = vec(ones(length(cfit),1),:);
@@ -234,7 +254,7 @@ elseif NB == 1
 end
 
 if Zinf == 1
-    bzinf = b(NVarA+1+NVarNB:NVarA + NVarNB + NVarZinf);
+    bzinf = b(NVarA+NVarNB+nExtra+1:NVarA+NVarNB+nExtra+NVarZinf);
     if isfield(EstimOpt, 'probit') && EstimOpt.probit == 1
         q = normcdf(Xzinf*bzinf);
     else
@@ -339,11 +359,7 @@ if nargout == 2
                 dtr = dtr./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
                 dnb = dnb - dtr.*theta;
             end
-            gnb = dnb.*Xnb;
-
-            if NBtype == 1
-                g = g - dnb.*Xa;
-            end
+            dTheta = dnb; % gnb = dTheta.*Xnb, since d(log theta)/d(gamma) = -Xnb
 
         else % Censored >0
             txnb = theta.*Xnb;
@@ -368,7 +384,8 @@ if nargout == 2
             gnb = zeros(length(Y),EstimOpt.NVarNB);
             gnb_tmp  = -psi(theta(iU)+Y(iU))+psi(theta(iU))-1+fit2(iU)...
                 +log(theta(iU)+Lam(iU))+ (theta(iU)+Y(iU))./(theta(iU)+Lam(iU));
-            gnb(iU,:)  = txnb(iU,:).*gnb_tmp;
+            dTheta = zeros(length(Y),1);
+            dTheta(iU) = theta(iU).*gnb_tmp;
                 
             if Truncated == 2
                 % Endogenous stratification (on-site sample): the censored cell mixes
@@ -387,7 +404,7 @@ if nargout == 2
 
                 % Y=C: d log ftmp / d s = theta * sum_k P*(k)*dlnf_ds / ftmp
                 gtmp = ctheta(:,1).*sum(pk.*dlnf_ds,2)./ftmp;
-                gnb(iC,:) = gtmp.*Xnb(iC,:);
+                dTheta(iC) = gtmp;
 
             else % Truncated == 0 or 1 - the censored cell mixes the plain NB masses
                 % d log ftmp / d beta = u * sum_k f(k)*(lambda-k) / ftmp
@@ -396,7 +413,7 @@ if nargout == 2
 
                 % d log ftmp / d s = theta * sum_k f(k)*dlnf_ds / ftmp
                 gtmp = ctheta(:,1).*sum(fk.*dlnf_ds,2)./ftmp;
-                gnb(iC,:) = gtmp.*Xnb(iC,:);
+                dTheta(iC) = gtmp;
 
                 if Truncated == 1
                     % The zero-truncation correction -log(1-u^theta) has the same form
@@ -407,14 +424,23 @@ if nargout == 2
 
                     gtruncnb = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
                     gtruncnb = gtruncnb./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
-                    gtruncnb = gtruncnb.*Xnb.*theta;
-                    gnb = gnb - gtruncnb;
+                    dTheta = dTheta - gtruncnb.*theta;
                 end
             end
         end
 
 
-    g = -[g, gnb];
+    gnb = dTheta.*Xnb;
+    if powerTheta ~= 0 % lambda enters theta, so beta reaches it too
+        g = g - powerTheta*dTheta.*Xa;
+    end
+    if nExtra == 1 % d(log theta)/d(P) = -log(lambda)
+        gP = dTheta.*fit;
+    else
+        gP = zeros(length(Y),0);
+    end
+
+    g = -[g, gnb, gP];
 %     g
 
     end

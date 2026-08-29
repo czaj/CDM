@@ -35,7 +35,8 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 % Model options:
 %   NB - 0 for Poisson (default), 1 for Negative Binomial
 %   NBtype - 2 for NB2, variance lambda + alpha*lambda^2 (default), 1 for NB1,
-%     variance lambda*(1+alpha). NB1 keeps the variance proportional to the mean
+%     variance lambda*(1+alpha), 3 for NB-P, variance lambda + alpha*lambda^P with
+%     the power P estimated. NB1 and NB2 are NB-P at P = 1 and P = 2
 %   Zinf - set to 1 for a zero-inflated model (requires INPUT.Xzinf)
 %   probit - set to 1 to use a probit rather than a logit inflation equation
 %   Truncated - 0 none (default), 1 zero truncation, 2 zero truncation with
@@ -168,6 +169,8 @@ if EstimOpt.Display == 1
     elseif EstimOpt.NB == 1
         if isfield(EstimOpt,'NBtype') && EstimOpt.NBtype == 1
             disp('Estimating Negative Binomial (NB1, variance proportional to the mean) regression model ...')
+        elseif isfield(EstimOpt,'NBtype') && EstimOpt.NBtype == 3
+            disp('Estimating Negative Binomial (NB-P, power estimated) regression model ...')
         else
             disp('Estimating Negative Binomial (NB2) regression model ...')
         end
@@ -202,6 +205,8 @@ if EstimOpt.Zinf == 1
         ModelTag = 'ZIP';
     elseif EstimOpt.NBtype == 1
         ModelTag = 'ZINB1';
+    elseif EstimOpt.NBtype == 3
+        ModelTag = 'ZINBP';
     else
         ModelTag = 'ZINB';
     end
@@ -209,6 +214,8 @@ elseif EstimOpt.NB == 0
     ModelTag = 'POISS';
 elseif EstimOpt.NBtype == 1
     ModelTag = 'NB1';
+elseif EstimOpt.NBtype == 3
+    ModelTag = 'NBP';
 else
     ModelTag = 'NB';
 end
@@ -219,18 +226,12 @@ end
 
 if isfield(EstimOpt,'NBtype') == 0 || isempty(EstimOpt.NBtype)
     EstimOpt.NBtype = 2; % NB2 - variance lambda + alpha*lambda^2
-elseif ~ismember(EstimOpt.NBtype,[1 2])
-    error('EstimOpt.NBtype must be 1 (NB1, variance lambda*(1+alpha)) or 2 (NB2, variance lambda + alpha*lambda^2)')
+elseif ~ismember(EstimOpt.NBtype,[1 2 3])
+    error('EstimOpt.NBtype must be 1 (NB1, variance lambda*(1+alpha)), 2 (NB2, variance lambda + alpha*lambda^2) or 3 (NB-P, variance lambda + alpha*lambda^P with P estimated)')
 end
 
-if EstimOpt.NB == 1 && EstimOpt.NBtype == 1 && EstimOpt.Censored > 0 && EstimOpt.NumGrad == 0
-    % Under NB1 the dispersion parameter moves with lambda, so beta reaches the
-    % censored cell through theta as well. That term is not derived yet.
-    if EstimOpt.Display == 1
-        cprintf(rgb('DarkOrange'), 'WARNING: analytical gradient for NB1 with censoring is not derived - switching to a numerical gradient (EstimOpt.NumGrad = 1) \n')
-    end
-    EstimOpt.NumGrad = 1;
-end
+% NB-P estimates the power P as a free parameter, placed right after the alpha block
+EstimOpt.NVarNBP = double(EstimOpt.NB == 1 && EstimOpt.NBtype == 3);
 
 if EstimOpt.Zinf == 1 && EstimOpt.Truncated > 0
     error('EstimOpt.Zinf cannot be combined with EstimOpt.Truncated - a zero-inflated model is not identified in a sample without zeros. Consider a hurdle specification instead.')
@@ -306,6 +307,10 @@ else
     EstimOpt.NamesNB = {'ln alpha'};
 end
 
+if EstimOpt.NVarNBP == 1
+    EstimOpt.NamesNB = [EstimOpt.NamesNB(:);{'P'}];
+end
+
 if EstimOpt.NVarZinf > 1 
     if isfield(EstimOpt,'NamesZinf') == 0 || isempty(EstimOpt.NamesZinf)|| length(EstimOpt.NamesZinf) ~= (EstimOpt.NVarZinf-1)
         EstimOpt.NamesZinf = (1:EstimOpt.NVarZinf-1)';
@@ -320,7 +325,7 @@ end
 
 %% starting values 
 
-if exist('B_backup','var') && ~isempty(B_backup) && size(B_backup,1) == EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
+if exist('B_backup','var') && ~isempty(B_backup) && size(B_backup,1) == EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarNBP + EstimOpt.NVarZinf
     b0 = B_backup(:);
     if EstimOpt.Display == 1
         disp('Using the starting values from Backup')
@@ -329,7 +334,7 @@ elseif isfield(Results_old,ModelTag) && isfield(Results_old.(ModelTag),'b0') % s
     b0source = ModelTag;
     Results_old.(b0source).b0_old = Results_old.(b0source).b0;
     Results_old.(b0source) = rmfield(Results_old.(b0source),'b0');
-    if length(Results_old.(b0source).b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarZinf
+    if length(Results_old.(b0source).b0_old) ~=  EstimOpt.NVarA + EstimOpt.NVarNB + EstimOpt.NVarNBP + EstimOpt.NVarZinf
        if EstimOpt.Display == 1
             disp('WARNING: Incorrect no. of starting values or model specification')
             disp(['Number of values in Results_old.',b0source,'.b0_old different from number of parameters for estimation'])
@@ -349,6 +354,10 @@ if  ~exist('b0','var')
 
     if EstimOpt.NVarNB > 0 % intercept plus any covariates of overdispersion
         b0 = [b0; zeros(EstimOpt.NVarNB,1)];
+    end
+
+    if EstimOpt.NVarNBP == 1
+        b0 = [b0; 2]; % start NB-P at P = 2, i.e. at NB2
     end
 
     if EstimOpt.Zinf == 1
@@ -568,13 +577,13 @@ Results.DetailsA = zeros(EstimOpt.NVarA,4);
 Results.DetailsA(:,[1 3 4]) = [Results.bhat(1:EstimOpt.NVarA),Results.std(1:EstimOpt.NVarA),pv(Results.bhat(1:EstimOpt.NVarA),Results.std(1:EstimOpt.NVarA))] ;
 
 if EstimOpt.NB == 1
-    Results.DetailsNB = zeros(EstimOpt.NVarNB,4);
-    Results.DetailsNB(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),pv(Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB))] ;
+    Results.DetailsNB = zeros(EstimOpt.NVarNB+EstimOpt.NVarNBP,4);
+    Results.DetailsNB(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP),pv(Results.bhat(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP),Results.std(EstimOpt.NVarA+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP))] ;
 end
 
 if EstimOpt.Zinf == 1
     Results.DetailsZinf = zeros(EstimOpt.NVarZinf,4);
-    Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarZinf))] ;
+    Results.DetailsZinf(:,[1 3 4]) = [Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+EstimOpt.NVarZinf),pv(Results.bhat(EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+EstimOpt.NVarZinf),Results.std(EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+1:EstimOpt.NVarA+EstimOpt.NVarNB+EstimOpt.NVarNBP+EstimOpt.NVarZinf))] ;
 end
 
 if TC_par_index > 0 && TC_par_index <= EstimOpt.NVarA
@@ -632,6 +641,8 @@ if EstimOpt.NB == 0
 else
     if EstimOpt.NBtype == 1
         nbName = 'Negative Binomial (NB1)';
+    elseif EstimOpt.NBtype == 3
+        nbName = 'Negative Binomial (NB-P)';
     else
         nbName = 'Negative Binomial';
     end

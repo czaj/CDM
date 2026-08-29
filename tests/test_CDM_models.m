@@ -85,6 +85,45 @@ ok = ~isempty(R1b) && ~isempty(R2b) && R2b.LL > R1b.LL;
 report('NB2 fits NB2 data better than NB1',ok, ...
     sprintf('LL NB2 %.1f vs NB1 %.1f',R2b.LL,R1b.LL));
 
+%% NB-P estimates the power and nests NB1 and NB2
+Ptrue = 1.5;
+thP = Lam.^(2-Ptrue)/alphaTrue;
+Yp = nbinrnd(thP,thP./(thP+Lam));
+
+[Rp1,errp] = fitCDM(Yp,struct('NB',1,'NBtype',3));
+ok = isempty(errp);
+detail = errp;
+if ok
+    Phat = Rp1.bhat(end);
+    ok = abs(Phat-Ptrue)/Rp1.std(end) < 4 && all(isfinite(Rp1.std));
+    detail = sprintf('P %.3f (true %.3f), s.e. %.3f',Phat,Ptrue,Rp1.std(end));
+end
+report('NB-P recovers the power P',ok,detail);
+
+% NB-P nests both, so on NB-P data it must fit at least as well as either
+[Rp2,~] = fitCDM(Yp,struct('NB',1,'NBtype',2));
+[Rp3,~] = fitCDM(Yp,struct('NB',1,'NBtype',1));
+ok = ~isempty(Rp1) && ~isempty(Rp2) && ~isempty(Rp3) && ...
+     Rp1.LL >= Rp2.LL - 1e-6 && Rp1.LL >= Rp3.LL - 1e-6;
+report('NB-P fits at least as well as NB1 and NB2',ok, ...
+    sprintf('LL NB-P %.1f, NB2 %.1f, NB1 %.1f',Rp1.LL,Rp2.LL,Rp3.LL));
+
+% and on NB2 data the estimated power should sit near 2
+[Rp4,~] = fitCDM(Y2,struct('NB',1,'NBtype',3));
+ok = ~isempty(Rp4) && abs(Rp4.bhat(end)-2)/Rp4.std(end) < 4;
+report('NB-P lands near P = 2 on NB2 data',ok, ...
+    sprintf('P %.3f (s.e. %.3f)',Rp4.bhat(end),Rp4.std(end)));
+
+% NB1 with censoring now has an analytical gradient, so it must not need NumGrad
+[Rc,errc] = fitCDM(min(max(Y1,1),8),struct('NB',1,'NBtype',1,'Truncated',1,'Censored',8));
+if isempty(Rc)
+    ok = false; detail = errc;
+else
+    ok = Rc.EstimOpt.NumGrad == 0 && all(isfinite(Rc.std));
+    detail = sprintf('NumGrad %d, max s.e. %.4f',Rc.EstimOpt.NumGrad,max(Rc.std));
+end
+report('NB1 with censoring keeps the analytical gradient',ok,detail);
+
 %% Hurdle model
 deltaTrue = [0.6;-0.03;0.5];
 Ppart = 1./(1+exp(-Xa*deltaTrue));

@@ -23,6 +23,9 @@ function [INPUT, Results, EstimOpt, OptimOpt] = DataCleanCDM(INPUT,EstimOpt)
 % save tmp1
 % return
 
+% Output directory and a diary of the session, shared with the DCE package.
+EstimOpt = setupDceOutputDefaults(EstimOpt);
+
 inputnames = fieldnames(INPUT);
 for i=1:length(inputnames)
     INPUT.(inputnames{(i)}) = double(INPUT.(inputnames{(i)}));
