@@ -51,6 +51,10 @@ Y = INPUT.Y(:);
 d = double(Y > 0); % participation indicator
 n = numel(Y);
 
+% Same design screen as CDM - the count part of a hurdle model reads its
+% consumer surplus from one coefficient in exactly the same way.
+DesignCheck = CDM_checkdesign(INPUT,EstimOpt);
+
 if isfield(INPUT,'Xh') && ~isempty(INPUT.Xh)
     Xh = INPUT.Xh;
 else
@@ -89,6 +93,7 @@ dh0(1) = log(max(mean(d),1e-3)/max(1-mean(d),1e-3)); % start at the observed sha
 
 [dhat,nLLh,exitH,~,~,hessH] = fminunc(@(D) binaryLL(D,d,Xh,W,useProbit),dh0,Opt);
 
+Results.DesignCheck = DesignCheck;
 Results.Binary = struct();
 Results.Binary.bhat = dhat;
 Results.Binary.LL = -nLLh;

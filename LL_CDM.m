@@ -138,9 +138,18 @@ elseif NB == 1
             f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit));
 
         elseif Truncated == 1
-            ThetaLam = theta./(exp(fit) + theta);
+            % logThetaLam is log(theta/(theta+lambda)).  Written that way round it
+            % underflows: once lambda/theta is below the double-precision epsilon
+            % the ratio rounds to exactly 1, its logarithm to exactly 0, and the
+            % truncation correction to log(0) = -Inf, which stops the optimiser
+            % with "Supplied function returned Inf or -Inf".  A zero-truncated NB
+            % with a wide-ranging price variable reaches small lambda routinely
+            % while the optimiser is searching.  log1p does the subtraction before
+            % the logarithm and is exact to 1e-25.
+            LamT = exp(fit);
+            logThetaLam = log1p(-LamT./(theta + LamT));
 
-            f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(-expm1(theta.*log(ThetaLam)));
+            f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) - log(-expm1(theta.*logThetaLam));
         elseif Truncated == 2
 
             f = gammaln(theta+Y)-gammaln(theta)-gammaln(Y+1)-theta.*fit2 + Y.*fit - (Y+theta).*log(theta + exp(fit)) + log(Y) - fit;
@@ -210,17 +219,19 @@ elseif NB == 1
 %             cfit2 = cfit2(:,1:end-1);
 %             ctheta = ctheta(:,1:end-1);
 
-            ThetaLam = theta./(exp(fit) + theta);
+            % See the note on logThetaLam in the uncensored branch above.
+            LamT = exp(fit);
+            logThetaLam = log1p(-LamT./(theta + LamT));
             f(iU) = gammaln(theta(iU)+Y(iU))-gammaln(theta(iU))-gammaln(Y(iU)+1)...
                 -theta(iU).*fit2(iU) + Y(iU).*fit(iU)...
                 - (Y(iU)+theta(iU)).*log(theta(iU) + exp(fit(iU)))...
-                - log(-expm1(theta(iU).*log(ThetaLam(iU))));
+                - log(-expm1(theta(iU).*logThetaLam(iU)));
             
             %if Y=C
             % - log(1-(ThetaLam).^(theta))
             
 %             cThetaLam = ThetaLam(iC);
-            trunc_corr = -expm1(theta(iC).*log(ThetaLam(iC)));
+            trunc_corr = -expm1(theta(iC).*logThetaLam(iC));
             ftmp = survC;
            
 %                 vec = 1:(Censored - 1);
@@ -351,12 +362,17 @@ if nargout == 2
 
             elseif Truncated ==1
 
-                gtmp = (ThetaLam.^(theta+1))./(-expm1(theta.*log(ThetaLam)));
+                % Same stable form as in the likelihood: every appearance of
+                % ThetaLam here is a power of it or its logarithm, so all of them
+                % go through logThetaLam.
+                logThetaLam = log1p(-Lam./(theta + Lam));
+
+                gtmp = exp((theta+1).*logThetaLam)./(-expm1(theta.*logThetaLam));
                 gtmp = gtmp.*Xa.*Lam;
                 g = g - gtmp;
 
-                dtr = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
-                dtr = dtr./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
+                dtr = exp(theta.*logThetaLam).*(Lam + (theta+Lam).*logThetaLam);
+                dtr = dtr./((theta+Lam).*(-expm1(theta.*logThetaLam)));
                 dnb = dnb - dtr.*theta;
             end
             dTheta = dnb; % gnb = dTheta.*Xnb, since d(log theta)/d(gamma) = -Xnb
@@ -418,12 +434,14 @@ if nargout == 2
                 if Truncated == 1
                     % The zero-truncation correction -log(1-u^theta) has the same form
                     % for both groups, so it is subtracted from every row.
-                    gtrunc = (ThetaLam.^(theta+1))./(-expm1(theta.*log(ThetaLam)));
+                    logThetaLam = log1p(-Lam./(theta + Lam));
+
+                    gtrunc = exp((theta+1).*logThetaLam)./(-expm1(theta.*logThetaLam));
                     gtrunc = gtrunc.*Xa.*Lam;
                     g = g - gtrunc;
 
-                    gtruncnb = (ThetaLam.^theta).*(Lam + (theta+Lam).*log(ThetaLam));
-                    gtruncnb = gtruncnb./((theta+Lam).*(-expm1(theta.*log(ThetaLam))));
+                    gtruncnb = exp(theta.*logThetaLam).*(Lam + (theta+Lam).*logThetaLam);
+                    gtruncnb = gtruncnb./((theta+Lam).*(-expm1(theta.*logThetaLam)));
                     dTheta = dTheta - gtruncnb.*theta;
                 end
             end

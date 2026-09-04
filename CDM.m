@@ -44,6 +44,8 @@ function Results = CDM(INPUT,Results_old,EstimOpt,OptimOpt)
 %   Censored - right-censoring point; observations above it are censored
 %   TC_par_index - which parameter of Xa is the travel cost, used to report
 %     consumer surplus per trip as -1/beta
+%   AllowRankDeficient - set to 1 to downgrade the rank check on the explanatory
+%     variables from an error to a warning (see CDM_checkdesign)
 %
 % Variables options:
 %   NamesA - names of the variables in Xa, e.g. {'Cons';'Travel cost'}
@@ -259,6 +261,14 @@ end
 if EstimOpt.Truncated > 0 && any(INPUT.Y == 0)
     error('Zero-truncated model requested (EstimOpt.Truncated > 0) but INPUT.Y contains %d zero(s)',sum(INPUT.Y == 0))
 end
+
+% explanatory variables
+% Y was checked above; Xa was not checked at all before this, and a collinear
+% design is the failure a travel cost package most needs to catch.  It does not
+% stop the likelihood from converging - the fit is the same fit - but it splits
+% the travel cost coefficient arbitrarily across the collinear columns, and
+% consumer surplus is -1/beta read from that one slot.  See CDM_checkdesign.
+Results.DesignCheck = CDM_checkdesign(INPUT,EstimOpt);
 
 % weights - DataCleanCDM leaves them at the respondent level, the likelihood needs
 % one per observation (cf. MNL.m). Never replace mis-sized weights silently.

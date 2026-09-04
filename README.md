@@ -86,6 +86,7 @@ Set these in `EstimOpt` before calling `DataCleanCDM`.
 | `Censored` | right-censoring point; observations above it are censored (with a warning) |
 | `NamesA`, `NamesNB`, `NamesZinf` | variable labels for the output |
 | `TC_par_index` | index of the travel cost parameter in `Xa`, used for consumer surplus |
+| `AllowRankDeficient` | 1 to downgrade the rank check on the explanatory variables from an error to a warning |
 | `Display` | 1 (default) prints the results, 0 runs quietly |
 | `ProjectName` | appended to the name of the saved `.xls` file |
 
@@ -184,6 +185,14 @@ CDM_compare(Results.POISS,Results.ZIP);  % Voung, non-nested
 ```
 
 Poisson is Negative Binomial with α = 0, which sits on the boundary of the parameter space, so the likelihood ratio statistic follows an equal mixture of a point mass at zero and χ²(1) — using plain χ²(1) makes the test about twice as conservative as it should be. Zero inflation is not identified under its own null, so `CDM_compare` falls back to the Voung test there.
+
+## Before it estimates anything
+
+`CDM` and `CDM_hurdle` screen the explanatory variables through `CDM_checkdesign` before estimating. A rank-deficient design is refused, the columns responsible are named, and the condition index and the variance inflation factor of the travel cost parameter are reported when they are large enough to matter.
+
+This is not fussiness. A collinear design does not stop a count model from converging — the log-likelihood is the log-likelihood of the same fitted model and the fit statistics are right — but the optimiser splits the shared direction between the collinear columns arbitrarily, and consumer surplus is −1/β read from one of them. Duplicating the travel cost column in an otherwise sound design leaves the log-likelihood identical to three decimals and changes the reported surplus from 1.567 to 47.978. Near-duplication is worse, because it does not even produce the `NaN` standard error that exact duplication does: at r = 0.999 the same surplus comes out as 0.035. Nothing downstream noticed, because nothing downstream had any way to.
+
+Set `EstimOpt.AllowRankDeficient = 1` if the design is deliberate — for instance when parameters are being constrained through `BActive`.
 
 ## Tests
 
