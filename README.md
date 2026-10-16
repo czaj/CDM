@@ -8,8 +8,19 @@ This package includes the following models:
 - Negative Binomial regression: NB2 (variance λ + αλ²), NB1 (variance λ(1+α)) and NB-P (variance λ + αλ^P, with the power estimated)
 - Zero-inflated Poisson (ZIP) and Negative Binomial (ZINB)
 - Hurdle models: a binary participation equation plus a zero-truncated count
+- Hybrid Poisson/NB2 and the selected NB2 log-series boundary, with latent motivations and ordinal measurements
 
-Each of them can be combined with:
+`CDM_hybrid` jointly estimates trip counts, latent structural equations and
+ordinal indicators. It supports population samples and marginally corrected
+zero-truncated samples, latent interactions and a restricted model for testing
+the count-factor link. A separate sensitivity places the normal latent law
+among visitors (`LatentDistribution='selected'`). Fixed normal-grid integration
+is available alongside Gauss-Hermite. Start with `CDM_demo_hybrid` and [the hybrid guide](HYBRID.md).
+This extension accepts raw respondent-level matrices directly; do not pass
+them through `DataCleanCDM`.
+
+The ordinary count-model families support the following options; the hybrid
+extension's supported specifications are listed separately in [HYBRID.md](HYBRID.md):
 - zero truncation (on-site samples, where non-visitors are unobserved)
 - zero truncation with endogenous stratification (on-site samples, where the probability of being sampled is proportional to the number of trips)
 - right censoring at a user-specified count
@@ -18,7 +29,7 @@ Each of them can be combined with:
 - analytical gradients, several Hessian and standard error options (including robust standard errors)
 - equality restrictions on parameters
 
-The models are estimated using the maximum likelihood method, with analytical gradients throughout. Consumer surplus per trip is reported alongside the coefficients.
+The models are estimated using the maximum likelihood method, with analytical gradients. The ordinary count models report consumer surplus per trip alongside the coefficients. The hybrid extension reports its joint-model results separately and does not automatically calculate welfare.
 
 All three Negative Binomial parameterisations are the same likelihood with θ = λ<sup>2−P</sup>/α: NB2 is P = 2, NB1 is P = 1, and NB-P estimates P. Since NB-P nests the other two, it is the honest way to choose between them — but the power is not always well identified, so check its standard error.
 
